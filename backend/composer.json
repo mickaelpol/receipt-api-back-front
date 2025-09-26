@@ -1,0 +1,7 @@
+{
+  "name": "receipt/app",
+  "type": "project",
+  "require": {
+    "google/auth": "^1.43"
+  }
+}

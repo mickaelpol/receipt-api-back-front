@@ -1,0 +1,38 @@
+body { background:#0b0f14; color:#f5f6f7; }
+.card { background:#121822; border:1px solid #172033; }
+.form-control, .form-select, .btn { border-radius:10px; }
+.statusbar { color:#9db2d0; font-size:14px; }
+
+/* Zone d’aperçu */
+.preview-wrap{
+    /* Hauteur explicite pilotée par JS ; valeur de secours avant sync */
+    --preview-h: 70vh;
+
+    border: 2px dashed rgba(255,255,255,0.2);
+    border-radius: 10px;
+    min-height: 160px;
+    height: var(--preview-h);  /* <- hauteur définie (pas seulement un max) */
+    overflow: hidden;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Image d’aperçu : toujours entière (jamais rognée) */
+#preview{
+    display: none;          /* cachée tant qu’il n’y a pas d’image */
+    width: 100%;
+    height: 100%;
+    object-fit: contain;    /* l’image est réduite pour tenir entièrement */
+}
+
+/* Quand on a une image, on l’affiche */
+.preview-wrap.has-image #preview{
+    display: block;
+}
+
+/* Mobile : fallback raisonnable si JS n’a pas encore sync */
+@media (max-width: 768px){
+    .preview-wrap{ --preview-h: 50vh; }
+}

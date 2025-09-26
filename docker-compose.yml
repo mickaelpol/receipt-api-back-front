@@ -1,0 +1,25 @@
+services:
+    api:
+        build: ./docker/php
+        container_name: receipt-api
+        ports:
+            - "8080:80"
+        environment:
+            APACHE_RUN_USER: www-data
+            APACHE_RUN_GROUP: www-data
+        volumes:
+            - ./backend:/var/www/html
+            - ./docker/php/dev.ini:/usr/local/etc/php/conf.d/dev.ini:ro
+            - ./backend/keys:/var/www/html/keys:ro
+        env_file:
+            - .env
+        # Pour composer dans le conteneur (on l'a installé dans l'image)
+        working_dir: /var/www/html
+
+    web:
+        image: nginx:alpine
+        container_name: receipt-web
+        ports:
+            - "8081:80"
+        volumes:
+            - ./frontend:/usr/share/nginx/html:ro
