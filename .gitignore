@@ -1,3 +1,6 @@
 backend/vendor
 .env
 backend/keys/*.json
+.idea/
+dist/
+node_modules/

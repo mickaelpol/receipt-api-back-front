@@ -49,26 +49,45 @@ $PROJECT_ID     = getenv('GCP_PROJECT_ID') ?: '';
 $LOCATION       = getenv('GCP_LOCATION') ?: 'eu';
 $PROCESSOR_ID   = getenv('GCP_PROCESSOR_ID') ?: '';
 
+$MAX_BATCH_UPLOADS = (int) (getenv('MAX_BATCH_UPLOADS') ?: 10);
+
 /**
  * WHO_COLUMNS dans .env :
  *   WHO_COLUMNS="Sabrina=K,L,M;Mickael=O,P,Q"
  */
 function parse_who_columns(): array {
+    // 1) WHO_COLUMNS_JSON (JSON explicite)
     $json = getenv('WHO_COLUMNS_JSON') ?: '';
     if ($json) {
         $arr = json_decode($json, true);
         if (is_array($arr)) {
-            // normalisation: clés string, valeurs tableau 3 lettres
             $norm = [];
             foreach ($arr as $who => $cols) {
                 if (is_array($cols) && count($cols) === 3) {
-                    $norm[trim((string)$who)] = [strtoupper($cols[0]), strtoupper($cols[1]), strtoupper($cols[2])];
+                    $norm[trim((string)$who)] = [
+                        strtoupper($cols[0]), strtoupper($cols[1]), strtoupper($cols[2])
+                    ];
                 }
             }
             if ($norm) return $norm;
         }
     }
-    // fallback "Sabrina:K,L,M;Mickael:O,P,Q"
+
+    // 2) WHO_COLUMNS en JSON (ton cas)
+    $rawJson = getenv('WHO_COLUMNS') ?: '';
+    if ($rawJson && ($arr = json_decode($rawJson, true)) && is_array($arr)) {
+        $norm = [];
+        foreach ($arr as $who => $cols) {
+            if (is_array($cols) && count($cols) === 3) {
+                $norm[trim((string)$who)] = [
+                    strtoupper($cols[0]), strtoupper($cols[1]), strtoupper($cols[2])
+                ];
+            }
+        }
+        if ($norm) return $norm;
+    }
+
+    // 3) Format legacy "Sabrina:K,L,M;Mickael:O,P,Q"
     $raw = getenv('WHO_COLUMNS') ?: '';
     $norm = [];
     foreach (array_filter(array_map('trim', explode(';', $raw))) as $chunk) {
@@ -352,12 +371,12 @@ if ($path === '/debug/headers') {
 /* ---- GET /config ---- */
 if ($path === '/config' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
     echo json_encode([
-        'ok'             => true,
-        'client_id'      => $CLIENT_ID,
-        'default_sheet'  => $DEFAULT_SHEET,
-        'receipt_api_url'=> (isset($_SERVER['HTTPS'])?'https':'http').'://'.$_SERVER['HTTP_HOST'].'/scan',
-        // NEW: options pour l’UI
-        'who_options'    => array_keys($WHO_COLUMNS),
+        'ok'              => true,
+        'client_id'       => $CLIENT_ID,
+        'default_sheet'   => $DEFAULT_SHEET,
+        'receipt_api_url' => (isset($_SERVER['HTTPS'])?'https':'http').'://'.$_SERVER['HTTP_HOST'].'/scan',
+        'who_options'     => array_keys($WHO_COLUMNS),
+        'max_batch'       => $MAX_BATCH_UPLOADS,   // ← NEW
     ]);
     exit;
 }
@@ -556,6 +575,15 @@ if ($path === '/scan/batch' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST')
         $j = json_decode(file_get_contents('php://input') ?: '', true);
         $arr = $j['imagesBase64'] ?? null;
         if (!is_array($arr) || !count($arr)) throw new RuntimeException('imagesBase64[] manquant');
+
+        if (count($arr) > $MAX_BATCH_UPLOADS) {
+            http_response_code(400);
+            echo json_encode([
+                'ok'    => false,
+                'error' => "Trop d’images: max $MAX_BATCH_UPLOADS"
+            ]);
+            exit;
+        }
 
         $items = [];
         foreach ($arr as $idx => $b64) {
