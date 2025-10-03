@@ -1,0 +1,51 @@
+# cloudbuild.yaml — build + push + déploiement Cloud Run
+# -> pas de bucket requis grâce à CLOUD_LOGGING_ONLY
+
+options:
+    logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+    _LOCATION: "europe-west9"         # même région que ton repo Artifact Registry
+    _REPO: "apps-ticket"              # nom de ton dépôt AR (vu dans ta capture)
+    _IMAGE: "receipt-parser"          # nom d'image que tu veux
+    _SERVICE: "receipt-parser"        # nom du service Cloud Run
+    _REGION: "europe-west9"
+    _PORT: "8080"
+
+steps:
+    # Build
+    - name: gcr.io/cloud-builders/docker
+      args:
+        [
+            "build",
+            "-t",
+            "${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$SHORT_SHA",
+            "-f",
+            "Dockerfile.cloudrun",
+            "."
+        ]
+
+    # Push
+    - name: gcr.io/cloud-builders/docker
+      args:
+        [
+            "push",
+            "${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$SHORT_SHA"
+        ]
+
+    # Deploy to Cloud Run (pas besoin de CLI locale, c'est dans le build)
+    - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+      entrypoint: gcloud
+      args:
+        [
+            "run","deploy","${_SERVICE}",
+            "--image=${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$SHORT_SHA",
+            "--region=${_REGION}",
+            "--platform=managed",
+            "--allow-unauthenticated",
+            "--port=${_PORT}",
+            "--quiet"
+        ]
+
+images:
+    - "${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:$SHORT_SHA"
