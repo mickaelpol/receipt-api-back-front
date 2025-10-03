@@ -1,30 +1,43 @@
-# Dockerfile.cloudrun (prod Cloud Run)
+# ===========================
+# Dockerfile.cloudrun (prod)
+# ===========================
+# Image runtime
 FROM php:8.2-apache
 
-# Modules Apache nécessaires
+# 1) Modules Apache + extensions PHP nécessaires
 RUN a2enmod rewrite headers
 
-# Ext PHP utiles (ajuste au besoin)
-RUN apt-get update && apt-get install -y libzip-dev unzip \
+RUN apt-get update && apt-get install -y \
+      libzip-dev \
+      unzip \
     && docker-php-ext-install zip \
     && rm -rf /var/lib/apt/lists/*
 
-# Cloud Run écoute sur 8080
+# 2) Installer Composer dans l'image (pas besoin de l'avoir dans le repo)
+RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
+ && php composer-setup.php --install-dir=/usr/local/bin --filename=composer \
+ && php -r "unlink('composer-setup.php');"
+
+# 3) Cloud Run écoute 8080
 ENV APACHE_LISTEN_PORT=8080
 RUN sed -i 's/80/${APACHE_LISTEN_PORT}/g' /etc/apache2/ports.conf /etc/apache2/sites-available/000-default.conf
 
 # Autoriser .htaccess
 RUN sed -ri 's/AllowOverride\s+None/AllowOverride All/i' /etc/apache2/apache2.conf
 
+# 4) Dossier de travail
 WORKDIR /var/www/html
 
-# Copie du code (en prod on copie, pas de volumes)
-COPY backend/ /var/www/html/
-COPY frontend/ /var/www/html/ui/
+# 5) Optimiser le cache Docker :
+#    - on copie d'abord uniquement composer.* puis on installe les deps
+COPY backend/composer.json backend/composer.lock* ./
+RUN composer install --no-dev --prefer-dist --no-interaction --no-ansi --no-progress
 
-# (Optionnel) Composer en prod si tu n’embarques pas vendor/
-COPY backend/composer.* /var/www/html/
-RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+# 6) On copie ensuite le reste du code backend (SANS vendor grâce au .dockerignore)
+COPY backend/ /var/www/html/
+
+# 7) On place le front (servi en statique sous /ui)
+COPY frontend/ /var/www/html/ui/
 
 EXPOSE 8080
 CMD ["apache2-foreground"]
