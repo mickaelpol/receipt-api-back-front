@@ -1,5 +1,25 @@
 /* ========= CONFIG ========= */
-const BACK_BASE = localStorage.getItem('BACK_BASE') || 'http://localhost:8080';
+/**
+ * BACK_BASE est déterminé ainsi :
+ * - si localStorage.BACK_BASE est défini → on l'utilise (permet d'override manuellement)
+ * - sinon, si on est hébergé (run.app/appspot.com) → même origine que la page (pas de CORS)
+ * - sinon (dev) → http://localhost:8080
+ */
+(() => {
+    const override = (localStorage.getItem('BACK_BASE') || '').trim();
+    let base = override;
+    if (!base) {
+        const h = location.hostname;
+        if (h.endsWith('run.app') || h.endsWith('appspot.com')) {
+            base = location.origin;                // Cloud Run / App Engine → même origine
+        } else {
+            base = 'http://localhost:8080';        // dev local
+        }
+    }
+    // on fige dans window pour debug si besoin
+    window.BACK_BASE = base;
+})();
+const BACK_BASE = window.BACK_BASE;
 
 // /config renvoyée par le back
 let CLIENT_ID = null;
@@ -91,8 +111,7 @@ function storeToken(token, expiresInSec) {
         const exp = Date.now() + (Math.max(1, expiresInSec || 0) - skew) * 1000;
         localStorage.setItem(LS_TOKEN_KEY, token);
         localStorage.setItem(LS_TOKEN_EXP, String(exp));
-    } catch {
-    }
+    } catch {}
 }
 
 function loadValidToken() {
@@ -100,8 +119,7 @@ function loadValidToken() {
         const tok = localStorage.getItem(LS_TOKEN_KEY);
         const exp = Number(localStorage.getItem(LS_TOKEN_EXP) || 0);
         if (tok && exp && Date.now() < exp) return tok;
-    } catch {
-    }
+    } catch {}
     return null;
 }
 
@@ -109,23 +127,14 @@ function clearStoredToken() {
     try {
         localStorage.removeItem(LS_TOKEN_KEY);
         localStorage.removeItem(LS_TOKEN_EXP);
-    } catch {
-    }
+    } catch {}
 }
 
 function storeAccountHint(email) {
-    try {
-        if (email) localStorage.setItem(LS_ACCOUNT_HINT, email);
-    } catch {
-    }
+    try { if (email) localStorage.setItem(LS_ACCOUNT_HINT, email); } catch {}
 }
-
 function loadAccountHint() {
-    try {
-        return localStorage.getItem(LS_ACCOUNT_HINT) || '';
-    } catch {
-        return '';
-    }
+    try { return localStorage.getItem(LS_ACCOUNT_HINT) || ''; } catch { return ''; }
 }
 
 /* ========= Helpers upload ========= */
@@ -133,14 +142,10 @@ async function encodeForDocAI(file) {
     if (file.size <= 2.5 * 1024 * 1024) return await fileToBase64NoPrefix(file);
     return await compressToBase64(file, 2400, 0.96, 'image/jpeg');
 }
-
 function resetFileInput() {
     const old = document.getElementById('file');
     if (!old) return;
-    try {
-        old.value = '';
-    } catch {
-    }
+    try { old.value = ''; } catch {}
     const fresh = old.cloneNode(true);
     old.parentNode.replaceChild(fresh, old);
     fresh.addEventListener('change', onImagePicked);
@@ -161,30 +166,16 @@ function setAuthStatus(text, ok = null) {
         el.style.setProperty('color', '#dc3545', 'important');
     }
 }
-
-const showAuthButton = () => {
-    const b = $('#btnAuth');
-    if (b) b.style.display = 'inline-block';
-};
-const hideAuthButton = () => {
-    const b = $('#btnAuth');
-    if (b) b.style.display = 'none';
-};
-const showSwitchButton = () => {
-    const b = $('#btnSwitch');
-    if (b) b.style.display = 'inline-block';
-};
-const hideSwitchButton = () => {
-    const b = $('#btnSwitch');
-    if (b) b.style.display = 'none';
-};
+const showAuthButton = () => { const b = $('#btnAuth'); if (b) b.style.display = 'inline-block'; };
+const hideAuthButton = () => { const b = $('#btnAuth'); if (b) b.style.display = 'none'; };
+const showSwitchButton = () => { const b = $('#btnSwitch'); if (b) b.style.display = 'inline-block'; };
+const hideSwitchButton = () => { const b = $('#btnSwitch'); if (b) b.style.display = 'none'; };
 
 function clearSheetsSelect(placeholder = '') {
     const sel = $('#sheetSelect');
     if (!sel) return;
     if (placeholder) sel.innerHTML = `<option disabled selected>${placeholder}</option>`; else sel.innerHTML = '';
 }
-
 function needAuthUI(msg = 'Veuillez vous connecter.') {
     showAuthButton();
     hideSwitchButton();
@@ -192,7 +183,6 @@ function needAuthUI(msg = 'Veuillez vous connecter.') {
     enableSave(false);
     clearSheetsSelect('Feuilles indisponibles');
 }
-
 function neutralAuthUI(msg = 'Connexion…') {
     showAuthButton();
     hideSwitchButton();
@@ -212,11 +202,7 @@ async function api(path, {method = 'GET', headers = {}, body = null} = {}) {
     const res = await fetch(`${BACK_BASE}${path}`, {method, headers: h, body, credentials: 'omit', cache: 'no-store'});
     const txt = await res.text();
     let json;
-    try {
-        json = JSON.parse(txt);
-    } catch {
-        json = null;
-    }
+    try { json = JSON.parse(txt); } catch { json = null; }
     if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
     return json ?? txt;
 }
@@ -231,15 +217,11 @@ function syncPreviewHeight() {
     const h = Math.max(160, Math.min(hForm, hVh));
     wrap.style.setProperty('--preview-h', `${h}px`);
 }
-
 function setPreview(urlOrNull) {
     const wrap = $('#previewWrap');
     const img = $('#preview');
     if (!img || !wrap) return;
-    if (_previewUrl) {
-        URL.revokeObjectURL(_previewUrl);
-        _previewUrl = null;
-    }
+    if (_previewUrl) { URL.revokeObjectURL(_previewUrl); _previewUrl = null; }
     if (!urlOrNull) {
         img.removeAttribute('src');
         wrap.classList.remove('has-image');
@@ -247,9 +229,7 @@ function setPreview(urlOrNull) {
         return;
     }
     _previewUrl = urlOrNull;
-    img.onload = () => {
-        syncPreviewHeight();
-    };
+    img.onload = () => { syncPreviewHeight(); };
     img.src = _previewUrl;
     wrap.classList.add('has-image');
 }
@@ -262,18 +242,11 @@ function applyAuthStack() {
     const a = document.getElementById('btnAuth');
     const sw = document.getElementById('btnSwitch');
     if (!s) return;
-
-    // on prend le parent commun des éléments (ils sont normalement frères)
     const parent = s.parentElement;
     if (!parent) return;
-
-    if (window.matchMedia('(max-width: 992px)').matches) {
-        parent.classList.add('auth-stack');
-    } else {
-        parent.classList.remove('auth-stack');
-    }
+    if (window.matchMedia('(max-width: 992px)').matches) parent.classList.add('auth-stack');
+    else parent.classList.remove('auth-stack');
 }
-
 window.addEventListener('resize', applyAuthStack);
 document.addEventListener('DOMContentLoaded', applyAuthStack);
 
@@ -300,12 +273,14 @@ async function loadConfig() {
     u.searchParams.set('t', String(Date.now()));
     const cfg = await fetch(u, {cache: 'no-store'}).then(r => r.json());
     if (!cfg.ok) throw new Error(cfg.error || 'Config error');
+
     CLIENT_ID = cfg.client_id || null;
     DEFAULT_SHEET = cfg.default_sheet || 'Feuille 1';
     RECEIPT_API_URL = cfg.receipt_api_url || `${BACK_BASE}/scan`;
     MAX_UPLOADS = Number.isFinite(cfg.max_batch) ? Number(cfg.max_batch) : 10;
+
     renderWhoOptions(Array.isArray(cfg.who_options) ? cfg.who_options : []);
-    console.log('[Config]', cfg);
+    console.log('[Config]', cfg, '| BACK_BASE =', BACK_BASE);
 }
 
 /* ========= UI ========= */
@@ -322,9 +297,7 @@ function bindUI() {
             await ensureConnected(true);
             await afterSignedIn();
             setStatus('Connecté ✓');
-        } catch (e) {
-            handleAuthError(e);
-        }
+        } catch (e) { handleAuthError(e); }
     });
     $('#btnSwitch')?.addEventListener('click', switchAccount);
     hideSwitchButton();
@@ -366,7 +339,7 @@ function renderWhoOptions(names = []) {
     const def = names.includes(last) ? last : names[0];
 
     wrap.classList.add('seg');
-    wrap.innerHTML = names.map((n, idx) => {
+    wrap.innerHTML = names.map((n) => {
         const id = `whoTop-${slug(n)}`;
         const checked = (n === def) ? 'checked' : '';
         return `
@@ -410,11 +383,8 @@ function validateCanSave() {
 
 /* ========= Google ========= */
 async function bootGoogle() {
-    if (!CLIENT_ID) {
-        setStatus('CLIENT_ID manquant');
-    }
-    await waitFor(() => window.google?.accounts?.oauth2, 150, 10000).catch(() => {
-    });
+    if (!CLIENT_ID) { setStatus('CLIENT_ID manquant'); }
+    await waitFor(() => window.google?.accounts?.oauth2, 150, 10000).catch(() => {});
     if (window.google?.accounts?.oauth2 && CLIENT_ID) {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID, scope: 'openid email profile', prompt: '',
@@ -427,8 +397,7 @@ async function bootGoogle() {
         });
         gisReady = true;
     }
-    await waitFor(() => typeof gapi !== 'undefined', 150, 10000).catch(() => {
-    });
+    await waitFor(() => typeof gapi !== 'undefined', 150, 10000).catch(() => {});
     if (typeof gapi !== 'undefined') {
         await new Promise(r => gapi.load('client', r));
         await gapi.client.init({discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/oauth2/v2/rest']});
@@ -449,10 +418,7 @@ async function autoSignIn() {
 async function ensureConnected(forceConsent = false) {
     if (!gisReady) throw new Error('Google Identity non prêt');
     const cached = loadValidToken();
-    if (cached) {
-        accessToken = cached;
-        return;
-    }
+    if (cached) { accessToken = cached; return; }
     const hint = loadAccountHint();
     accessToken = null;
     await new Promise((resolve, reject) => {
@@ -480,14 +446,12 @@ async function ensureConnected(forceConsent = false) {
 
 async function afterSignedIn() {
     let me;
-    try {
-        me = await api('/auth/me');
-    } catch (e) {
-        handleAuthError(e);
-        throw e;
-    }
+    try { me = await api('/auth/me'); }
+    catch (e) { handleAuthError(e); throw e; }
+
     currentUserEmail = me.email || null;
     if (currentUserEmail) storeAccountHint(currentUserEmail);
+
     try {
         if (gapiReady && accessToken) {
             gapi.client.setToken({access_token: accessToken});
@@ -495,9 +459,9 @@ async function afterSignedIn() {
             currentUserEmail = (ui.result?.email || currentUserEmail || '').toLowerCase();
             if (currentUserEmail) storeAccountHint(currentUserEmail);
         }
-    } catch {
-    }
+    } catch {}
     if (accessToken && !loadValidToken()) storeToken(accessToken, 55 * 60);
+
     if (currentUserEmail) {
         setAuthStatus(`Connecté · ${currentUserEmail}`, true);
         hideAuthButton();
@@ -512,7 +476,6 @@ function isUnauthorizedEmailError(err) {
     const msg = String(err?.message || err || '');
     return /Email non autoris(é|e)/i.test(msg) || /403/.test(msg);
 }
-
 function handleAuthError(err, {showButton = true} = {}) {
     console.error('Auth error:', err);
     const raw = String(err?.message || 'Erreur d’authentification');
@@ -541,10 +504,7 @@ function waitFor(test, every = 100, timeout = 10000) {
     return new Promise((resolve, reject) => {
         const t0 = Date.now();
         (function loop() {
-            try {
-                if (test()) return resolve();
-            } catch {
-            }
+            try { if (test()) return resolve(); } catch {}
             if (Date.now() - t0 > timeout) return reject(new Error('waitFor timeout'));
             setTimeout(loop, every);
         })();
@@ -554,10 +514,7 @@ function waitFor(test, every = 100, timeout = 10000) {
 /* ========= Scan — mode simple ========= */
 async function onImagePicked(e) {
     const file = e.target.files?.[0];
-    if (!file) {
-        setPreview(null);
-        return;
-    }
+    if (!file) { setPreview(null); return; }
     enableSave(false);
     setStatus('Analyse du ticket…');
     setPreview(URL.createObjectURL(file));
@@ -572,10 +529,7 @@ async function onImagePicked(e) {
         });
         const txt = await resp.text();
         let json = {};
-        try {
-            json = JSON.parse(txt);
-        } catch {
-        }
+        try { json = JSON.parse(txt); } catch {}
         if (!resp.ok || json.ok === false) throw new Error(json.error || `HTTP ${resp.status}`);
         if (json.supplier_name) $('#merchant').value = json.supplier_name;
         if (json.receipt_date) $('#date').value = json.receipt_date;
@@ -583,23 +537,14 @@ async function onImagePicked(e) {
         setStatus('Reconnaissance OK. Vérifie puis « Enregistrer ».');
     } catch (err) {
         if (isUnauthorizedEmailError(err)) handleAuthError(err);
-        else {
-            console.error(err);
-            setStatus('Analyse indisponible — complète manuellement.');
-        }
+        else { console.error(err); setStatus('Analyse indisponible — complète manuellement.'); }
     } finally {
         const fi = document.getElementById('file');
-        if (fi) {
-            try {
-                fi.value = '';
-            } catch {
-            }
-        }
+        if (fi) { try { fi.value = ''; } catch {} }
         validateCanSave();
         syncPreviewHeight();
     }
 }
-
 function fileToBase64NoPrefix(file) {
     return new Promise((resolve, reject) => {
         const r = new FileReader();
@@ -634,10 +579,7 @@ async function saveToSheet() {
         enableSave(false);
     } catch (e) {
         if (isUnauthorizedEmailError(e)) handleAuthError(e);
-        else {
-            console.error(e);
-            setStatus('Erreur : ' + (e.message || e));
-        }
+        else { console.error(e); setStatus('Erreur : ' + (e.message || e)); }
     }
 }
 
@@ -649,26 +591,18 @@ async function revokeAccessToken(token) {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'}
         });
-    } catch {
-    }
+    } catch {}
 }
-
 function signOutQuiet({keepHint = true} = {}) {
     if (accessToken) revokeAccessToken(accessToken);
     clearStoredToken();
-    if (!keepHint) {
-        try {
-            localStorage.removeItem(LS_ACCOUNT_HINT);
-        } catch {
-        }
-    }
+    if (!keepHint) { try { localStorage.removeItem(LS_ACCOUNT_HINT); } catch {} }
     accessToken = null;
     currentUserEmail = null;
     hideSwitchButton();
     clearSheetsSelect('Feuilles indisponibles');
     enableSave(false);
 }
-
 async function switchAccount() {
     try {
         // On enlève le token courant et on force le choix d’un autre compte
@@ -685,25 +619,18 @@ async function switchAccount() {
                 if (resp.expires_in) storeToken(accessToken, Number(resp.expires_in));
                 resolve();
             };
-            tokenClient.requestAccessToken({ prompt: 'select_account' }); // <- ouvre le sélecteur de compte Google
+            tokenClient.requestAccessToken({ prompt: 'select_account' });
         });
 
         await afterSignedIn();
         setStatus('Connecté ✓ (compte changé)');
         hideAuthButton();
         showSwitchButton();
-
     } catch (e) {
-        if (isUnauthorizedEmailError(e)) {
-            handleAuthError(e, { showButton: true });
-        } else {
-            needAuthUI('Veuillez vous connecter.');
-        }
+        if (isUnauthorizedEmailError(e)) { handleAuthError(e, { showButton: true }); }
+        else { needAuthUI('Veuillez vous connecter.'); }
     }
 }
-
-
-
 function signOut({keepHint = true} = {}) {
     signOutQuiet({keepHint});
     needAuthUI('Déconnecté');
@@ -785,7 +712,6 @@ function setupFloatingActions() {
 
     _fabMounted = true;
 }
-
 function showFloatingActions(show) {
     const el = document.getElementById('floatingActions');
     if (!el) return;
@@ -841,10 +767,7 @@ function switchMode(mode) {
 async function onMultiFilesPicked(e) {
     const incoming = Array.from(e.target.files || []);
     if (!incoming.length) return;
-    try {
-        e.target.value = '';
-    } catch {
-    }
+    try { e.target.value = ''; } catch {}
 
     const remaining = Math.max(0, MAX_UPLOADS - multiItems.length);
     if (remaining <= 0) {
@@ -872,8 +795,6 @@ async function onMultiFilesPicked(e) {
 }
 
 /** Rendu carte */
-// 2) Cartes : badge de statut + meilleur rendu
-// === remplace entièrement renderCard(item) ===
 function renderCard(item) {
     const wrap = $('#multiCards'); if (!wrap) return;
     let card = document.getElementById(item.id);
@@ -921,9 +842,7 @@ function renderCard(item) {
 
 /** Vider le mode multiple */
 function clearMulti() {
-    multiItems.forEach(it => {
-        if (it.thumbUrl) URL.revokeObjectURL(it.thumbUrl);
-    });
+    multiItems.forEach(it => { if (it.thumbUrl) URL.revokeObjectURL(it.thumbUrl); });
     multiItems = [];
     const wrap = $('#multiCards');
     if (wrap) wrap.innerHTML = '';
@@ -940,7 +859,6 @@ function loadImageURL(url) {
         img.src = url;
     });
 }
-
 async function compressToBase64(file, maxLongSide = 2400, quality = 0.96, mime = 'image/jpeg') {
     const {img, url} = await loadImageURL(URL.createObjectURL(file));
     const longSide = Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height);
@@ -963,7 +881,6 @@ async function compressToBase64(file, maxLongSide = 2400, quality = 0.96, mime =
 function runWithConcurrency(items, worker, concurrency = 3) {
     return new Promise((resolve) => {
         let i = 0, running = 0, results = [];
-
         function next() {
             while (running < concurrency && i < items.length) {
                 const idx = i++;
@@ -978,7 +895,6 @@ function runWithConcurrency(items, worker, concurrency = 3) {
                     });
             }
         }
-
         next();
     });
 }
@@ -1009,7 +925,7 @@ async function runBatchScan() {
             it.supplier = json.supplier_name || '';
             it.dateISO  = json.receipt_date || '';
             it.total    = (json.total_amount!=null) ? Number(json.total_amount) : null;
-            it.status   = 'OK';                 // restera vert
+            it.status   = 'OK';
             renderCard(it);
             return { ok:true };
         };
@@ -1064,7 +980,7 @@ async function runBatchSave() {
                     if (badge) {
                         badge.textContent = 'Enregistré ✔';
                         badge.classList.remove('status-analyse','status-error');
-                        badge.classList.add('status-ok');  // reste vert
+                        badge.classList.add('status-ok');
                     }
                 } else {
                     if (badge) {

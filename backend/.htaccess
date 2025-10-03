@@ -4,25 +4,25 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
-  # 1) OPTIONS (preflight) en local : répondre 204 avant toute redirection
+  # --- [LOCAL] OPTIONS (preflight) : répondre 204 au front (8081) avant toute redirection
   RewriteCond %{REQUEST_METHOD} =OPTIONS
   RewriteCond %{HTTP:Origin} ^http://localhost:8081$ [NC]
   RewriteRule ^ - [R=204,END]
 </IfModule>
 
-# 2) CORS (autoriser UNIQUEMENT le front local 8081) — sans doublons
+# --- [LOCAL] CORS : autoriser UNIQUEMENT http://localhost:8081 ---
 <IfModule mod_headers.c>
-  # Déterminer si l'origine est http://localhost:8081
+  # Marquer l'origine si elle correspond
   SetEnvIf Origin "^http://localhost:8081$" ACAO_ORIGIN=$0
 
-  # Nettoyer d'éventuels en-têtes posés par PHP/Apache pour éviter "multiple values"
+  # Nettoyer d'éventuels doublons
   Header always unset Access-Control-Allow-Origin
   Header always unset Access-Control-Allow-Headers
   Header always unset Access-Control-Allow-Methods
   Header always unset Access-Control-Allow-Credentials
   Header always unset Vary
 
-  # Poser une seule fois les en-têtes CORS si l'origine correspond
+  # Poser une fois
   Header always set Access-Control-Allow-Origin %{ACAO_ORIGIN}e env=ACAO_ORIGIN
   Header always set Vary Origin env=ACAO_ORIGIN
   Header always set Access-Control-Allow-Credentials true env=ACAO_ORIGIN
@@ -32,21 +32,27 @@
 </IfModule>
 
 <IfModule mod_rewrite.c>
-  # 3) HTTPS en prod uniquement (pas pour localhost/.local, ni si déjà HTTPS via proxy)
+  # --- [PROD] forcer HTTPS (Cloud Run) sauf localhost/.local
   RewriteCond %{HTTP:X-Forwarded-Proto} !https
   RewriteCond %{HTTPS} !=on
   RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:\d+)?$ [NC]
   RewriteCond %{HTTP_HOST} !\.local(:\d+)?$ [NC]
   RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 
-  # 4) Routage vers index.php (sauf fichiers/dossiers existants)
+  # --- [UI] si on appelle la racine, servir le frontend (/ui/)
+  RewriteRule ^$ ui/ [L]
+
+  # Laisser passer les fichiers/dossiers existants (assets de l'UI)
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
+
+  # --- [API] router les endpoints vers index.php
+  RewriteCond %{REQUEST_URI} ^/(config|auth(?:/.*)?|sheets(?:/.*)?|scan(?:/.*)?)$ [NC]
   RewriteRule ^ index.php [QSA,L]
 </IfModule>
 
-# 5) Sécurité basique
+# Sécurité basique
 Options -Indexes
 
 # Bloquer fichiers sensibles
@@ -59,7 +65,7 @@ Options -Indexes
   Require all denied
 </FilesMatch>
 
-# Headers de sécurité (indépendants de CORS)
+# Headers de sécurité
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"
   Header always set X-Frame-Options "SAMEORIGIN"
