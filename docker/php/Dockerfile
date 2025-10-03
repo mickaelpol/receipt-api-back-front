@@ -1,7 +1,7 @@
 FROM php:8.2-apache
 
 # Activer mod_rewrite et autoriser .htaccess
-RUN a2enmod rewrite && \
+RUN a2enmod rewrite headers && \
     sed -ri 's/AllowOverride\s+None/AllowOverride All/i' /etc/apache2/apache2.conf
 
 # Quelques utilitaires + composer

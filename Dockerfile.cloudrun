@@ -1,0 +1,30 @@
+# Dockerfile.cloudrun (prod Cloud Run)
+FROM php:8.2-apache
+
+# Modules Apache nécessaires
+RUN a2enmod rewrite headers
+
+# Ext PHP utiles (ajuste au besoin)
+RUN apt-get update && apt-get install -y libzip-dev unzip \
+    && docker-php-ext-install zip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Cloud Run écoute sur 8080
+ENV APACHE_LISTEN_PORT=8080
+RUN sed -i 's/80/${APACHE_LISTEN_PORT}/g' /etc/apache2/ports.conf /etc/apache2/sites-available/000-default.conf
+
+# Autoriser .htaccess
+RUN sed -ri 's/AllowOverride\s+None/AllowOverride All/i' /etc/apache2/apache2.conf
+
+WORKDIR /var/www/html
+
+# Copie du code (en prod on copie, pas de volumes)
+COPY backend/ /var/www/html/
+COPY frontend/ /var/www/html/ui/
+
+# (Optionnel) Composer en prod si tu n’embarques pas vendor/
+COPY backend/composer.* /var/www/html/
+RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
+EXPOSE 8080
+CMD ["apache2-foreground"]

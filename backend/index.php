@@ -22,13 +22,7 @@ else        { ini_set('display_errors', '0'); error_reporting(E_ALL & ~E_DEPRECA
 /* ---------- CORS ---------- */
 $origin  = $_SERVER['HTTP_ORIGIN'] ?? '';
 $allowed = getenv('ALLOWED_ORIGINS') ?: '*';
-$allow   = '*';
-if ($allowed !== '*') {
-    $list = array_map('trim', explode(',', $allowed));
-    if ($origin && in_array($origin, $list, true)) $allow = $origin;
-    else $allow = $list[0] ?? '*';
-}
-header('Access-Control-Allow-Origin: '.$allow);
+
 header('Vary: Origin');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');

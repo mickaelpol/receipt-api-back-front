@@ -1,5 +1,69 @@
-# Router TOUT vers index.php (sauf fichiers/dossiers existants)
-RewriteEngine On
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^ index.php [QSA,L]
+# ===== backend/.htaccess — local + Cloud Run, CORS propre =====
+# Nécessite mod_rewrite ET mod_headers
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # 1) OPTIONS (preflight) en local : répondre 204 avant toute redirection
+  RewriteCond %{REQUEST_METHOD} =OPTIONS
+  RewriteCond %{HTTP:Origin} ^http://localhost:8081$ [NC]
+  RewriteRule ^ - [R=204,END]
+</IfModule>
+
+# 2) CORS (autoriser UNIQUEMENT le front local 8081) — sans doublons
+<IfModule mod_headers.c>
+  # Déterminer si l'origine est http://localhost:8081
+  SetEnvIf Origin "^http://localhost:8081$" ACAO_ORIGIN=$0
+
+  # Nettoyer d'éventuels en-têtes posés par PHP/Apache pour éviter "multiple values"
+  Header always unset Access-Control-Allow-Origin
+  Header always unset Access-Control-Allow-Headers
+  Header always unset Access-Control-Allow-Methods
+  Header always unset Access-Control-Allow-Credentials
+  Header always unset Vary
+
+  # Poser une seule fois les en-têtes CORS si l'origine correspond
+  Header always set Access-Control-Allow-Origin %{ACAO_ORIGIN}e env=ACAO_ORIGIN
+  Header always set Vary Origin env=ACAO_ORIGIN
+  Header always set Access-Control-Allow-Credentials true env=ACAO_ORIGIN
+  Header always set Access-Control-Allow-Methods "GET,POST,PUT,PATCH,DELETE,OPTIONS" env=ACAO_ORIGIN
+  Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With" env=ACAO_ORIGIN
+  Header always set Access-Control-Max-Age "86400" env=ACAO_ORIGIN
+</IfModule>
+
+<IfModule mod_rewrite.c>
+  # 3) HTTPS en prod uniquement (pas pour localhost/.local, ni si déjà HTTPS via proxy)
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:\d+)?$ [NC]
+  RewriteCond %{HTTP_HOST} !\.local(:\d+)?$ [NC]
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+  # 4) Routage vers index.php (sauf fichiers/dossiers existants)
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+  RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+# 5) Sécurité basique
+Options -Indexes
+
+# Bloquer fichiers sensibles
+<FilesMatch "^(composer\.json|composer\.lock|\.env|.*\.(ini|log|ya?ml))$">
+  Require all denied
+</FilesMatch>
+
+# Bloquer fichiers cachés (.git, .ht*)
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
+
+# Headers de sécurité (indépendants de CORS)
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set X-XSS-Protection "1; mode=block"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+</IfModule>
