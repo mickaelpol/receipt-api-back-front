@@ -185,6 +185,12 @@ make format
 
 # Vérifier la séparation frontend/backend
 ./scripts/check-frontend-backend-separation.sh
+
+# Tests de conformité CSP
+./scripts/test-csp-compliance.sh
+
+# Vérifier les violations CSP
+./scripts/check-csp-violations.sh
 ```
 
 **Outils inclus dans le container :**
@@ -214,7 +220,10 @@ receipt-api-local-google-parser/
 │   └── docker/php/         # Configuration PHP
 ├── 📁 scripts/             # Scripts utilitaires
 │   ├── smoke-tests.sh      # Tests de fumée
-│   └── check-frontend-backend-separation.sh
+│   ├── test-csp-compliance.sh
+│   └── check-csp-violations.sh
+├── 📁 frontend/assets/libs/ # Assets locaux
+│   └── bootstrap/5.3.3/     # Bootstrap versionnée
 └── 📁 tests/               # Tests unitaires
 ```
 
@@ -226,10 +235,23 @@ receipt-api-local-google-parser/
 ## 🔒 Sécurité
 
 ### Headers de sécurité
-- **CSP** : Content Security Policy stricte
+- **CSP** : Content Security Policy stricte (assets locaux uniquement)
 - **HSTS** : HTTP Strict Transport Security
 - **X-Frame-Options** : Protection contre le clickjacking
 - **X-Content-Type-Options** : Protection MIME sniffing
+
+#### Politique CSP
+La CSP est configurée pour :
+- **Assets locaux uniquement** : Pas de CDN (Bootstrap, etc. servis localement)
+- **Google Identity** : Autorise `accounts.google.com` et `apis.google.com` pour l'authentification
+- **APIs Google** : Autorise `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `sheets.googleapis.com`
+- **Images** : Autorise `data:` et `blob:` pour les images uploadées
+- **Frames** : Autorise uniquement `accounts.google.com` pour le modal de connexion
+
+#### Assets locaux
+- **Bootstrap 5.3.3** : Servi depuis `frontend/assets/libs/bootstrap/5.3.3/`
+- **Source maps** : Désactivées en production, locales en développement
+- **Versioning** : Versions épinglées pour la reproductibilité
 
 ### Authentification
 - **OAuth2** : Authentification Google sécurisée
@@ -320,6 +342,37 @@ make logs
 - Échecs silencieux
 - Valeurs de retour ignorées
 
+## 📦 Gestion des Assets
+
+### Ajout d'une nouvelle bibliothèque
+1. **Créer le dossier** : `frontend/assets/libs/nom-lib/version/`
+2. **Télécharger les fichiers** : CSS, JS, et éventuellement les source maps
+3. **Mettre à jour HTML** : Remplacer les références CDN par les assets locaux
+4. **Vérifier la CSP** : S'assurer que la CSP reste stricte
+5. **Tester** : `./scripts/check-csp-violations.sh`
+
+### Politique des versions
+- **Épinglage strict** : Chaque lib a sa version fixée
+- **Documentation** : README.md dans chaque dossier de lib
+- **Source maps** : Locales uniquement, jamais de CDN
+
+### Exemple : Ajouter une nouvelle lib
+```bash
+# 1. Créer le dossier
+mkdir -p frontend/assets/libs/mon-lib/1.0.0/
+
+# 2. Télécharger les assets
+curl -L -o frontend/assets/libs/mon-lib/1.0.0/mon-lib.min.css "https://example.com/mon-lib.min.css"
+curl -L -o frontend/assets/libs/mon-lib/1.0.0/mon-lib.min.js "https://example.com/mon-lib.min.js"
+
+# 3. Mettre à jour HTML
+# Remplacer <link href="https://cdn.example.com/mon-lib.min.css" rel="stylesheet">
+# Par <link href="assets/libs/mon-lib/1.0.0/mon-lib.min.css" rel="stylesheet">
+
+# 4. Vérifier
+./scripts/check-csp-violations.sh
+```
+
 ## 🤝 Contribution
 
 ### Workflow
@@ -335,6 +388,8 @@ make logs
 - [ ] Documentation à jour
 - [ ] Tests passent
 - [ ] Sécurité vérifiée
+- [ ] Assets locaux (pas de CDN)
+- [ ] CSP conforme
 
 ## 📄 Licence
 
