@@ -11,7 +11,7 @@ RewriteRule ^ index.html [L]
 # Security headers
 <IfModule mod_headers.c>
     # CSP for Google Identity - local assets only
-    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://oauth2.googleapis.com https://openidconnect.googleapis.com https://sheets.googleapis.com https://*.googleapis.com; frame-src 'self' https://accounts.google.com;"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://apis.google.com https://*.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://oauth2.googleapis.com https://openidconnect.googleapis.com https://accounts.googleapis.com https://www.googleapis.com; frame-src 'self' https://accounts.google.com https://apis.google.com https://content.googleapis.com;"
     
     # HSTS
     Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"

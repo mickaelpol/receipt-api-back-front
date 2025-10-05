@@ -191,6 +191,12 @@ make format
 
 # Vérifier les violations CSP
 ./scripts/check-csp-violations.sh
+
+# Test spécifique Google login avec CSP
+./scripts/test-google-login-csp.sh
+
+# Validation CSP pour CI
+./scripts/ci-csp-validation.sh
 ```
 
 **Outils inclus dans le container :**
@@ -243,10 +249,15 @@ receipt-api-local-google-parser/
 #### Politique CSP
 La CSP est configurée pour :
 - **Assets locaux uniquement** : Pas de CDN (Bootstrap, etc. servis localement)
-- **Google Identity** : Autorise `accounts.google.com` et `apis.google.com` pour l'authentification
-- **APIs Google** : Autorise `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `sheets.googleapis.com`
-- **Images** : Autorise `data:` et `blob:` pour les images uploadées
-- **Frames** : Autorise uniquement `accounts.google.com` pour le modal de connexion
+- **Google Identity** : Autorise `accounts.google.com`, `apis.google.com`, `*.gstatic.com` pour l'authentification
+- **APIs Google** : Autorise `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `accounts.googleapis.com`, `www.googleapis.com`
+- **Images** : Autorise `data:` et `https:` pour les images uploadées
+- **Frames** : Autorise `accounts.google.com`, `apis.google.com`, `content.googleapis.com` pour le modal de connexion
+
+#### Domaines Google requis
+- **frame-src** : `accounts.google.com`, `apis.google.com`, `content.googleapis.com`
+- **script-src** : `accounts.google.com`, `apis.google.com`, `*.gstatic.com`
+- **connect-src** : `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `accounts.googleapis.com`, `www.googleapis.com`
 
 #### Assets locaux
 - **Bootstrap 5.3.3** : Servi depuis `frontend/assets/libs/bootstrap/5.3.3/`

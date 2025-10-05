@@ -47,8 +47,8 @@ echo "4️⃣ Vérification du versioning..."
 for lib_dir in frontend/assets/libs/*/; do
     if [ -d "$lib_dir" ]; then
         lib_name=$(basename "$lib_dir")
-        # Vérifier qu'il y a un sous-dossier avec une version
-        if [ ! -d "$lib_dir"* ]; then
+        # Vérifier qu'il y a des fichiers dans le dossier (version épinglée)
+        if [ -z "$(ls -A "$lib_dir" 2>/dev/null)" ]; then
             echo "   ❌ Version non spécifiée pour $lib_name"
             VIOLATIONS=1
         else
