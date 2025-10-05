@@ -1,9 +1,7 @@
 /* ========= CONFIG ========= */
 /**
- * BACK_BASE est déterminé ainsi :
- * - si localStorage.BACK_BASE est défini → on l'utilise (permet d'override manuellement)
- * - sinon, si on est hébergé (run.app/appspot.com) → même origine que la page (pas de CORS)
- * - sinon (dev) → http://localhost:8080
+ * Dynamic API base URL determination
+ * Priority: localStorage override > Cloud Run detection > localhost fallback
  */
 (() => {
     const override = (localStorage.getItem('BACK_BASE') || '').trim();
@@ -35,19 +33,33 @@ let currentUserEmail = null;
 let _previewUrl = null;
 
 /* ========= LOCAL STORAGE KEYS ========= */
-const LS_TOKEN_KEY = 'gis_access_token';
+// const LS_TOKEN_KEY = 'gis_access_token'; // Non utilisé (stockage en mémoire uniquement pour la sécurité)
 const LS_TOKEN_EXP = 'gis_access_token_exp';
 const LS_ACCOUNT_HINT = 'gis_account_hint';
 
 let MAX_UPLOADS = 10;
 
 /* ========= HELPERS ========= */
+/**
+ * DOM selector shorthand
+ * @param {string} selector CSS selector
+ * @returns {Element|null} First matching element
+ */
 const $ = s => document.querySelector(s);
+
+/**
+ * Update status message display
+ * @param {string} msg Status message to display
+ */
 const setStatus = msg => {
     const el = $('#status');
     if (el) el.textContent = msg;
-    console.log('[Scan]', msg);
 };
+
+/**
+ * Enable/disable save button
+ * @param {boolean} on Whether to enable the button
+ */
 const enableSave = on => {
     const b = $('#btnSave');
     if (b) b.disabled = !on;
@@ -105,47 +117,90 @@ function showToast(message) {
 }
 
 /* ------- Token storage helpers ------- */
+/**
+ * Store authentication token in memory only (security)
+ * @param {string} token Access token
+ * @param {number} expiresInSec Token expiration in seconds
+ */
 function storeToken(token, expiresInSec) {
+    accessToken = token;
+    // Store only session flag, not the token itself
     try {
-        const skew = 30;
-        const exp = Date.now() + (Math.max(1, expiresInSec || 0) - skew) * 1000;
-        localStorage.setItem(LS_TOKEN_KEY, token);
-        localStorage.setItem(LS_TOKEN_EXP, String(exp));
-    } catch {}
+        sessionStorage.setItem('wasAuthenticated', 'true');
+        // Optionally store expiration for better token management
+        if (expiresInSec) {
+            const expirationTime = Date.now() + (expiresInSec * 1000);
+            localStorage.setItem(LS_TOKEN_EXP, expirationTime.toString());
+        }
+    } catch { }
 }
 
+/**
+ * Load valid token from memory
+ * @returns {string|null} Valid token or null
+ */
 function loadValidToken() {
     try {
-        const tok = localStorage.getItem(LS_TOKEN_KEY);
-        const exp = Number(localStorage.getItem(LS_TOKEN_EXP) || 0);
-        if (tok && exp && Date.now() < exp) return tok;
-    } catch {}
+        const wasAuth = sessionStorage.getItem('wasAuthenticated');
+        if (wasAuth && accessToken) {
+            // Check if token is still valid (not expired)
+            const expirationTime = localStorage.getItem(LS_TOKEN_EXP);
+            if (expirationTime && Date.now() > parseInt(expirationTime)) {
+                // Token expired, clear it
+                clearStoredToken();
+                return null;
+            }
+            return accessToken; // Memory-only token
+        }
+    } catch { }
     return null;
 }
 
+/**
+ * Clear stored authentication data
+ */
 function clearStoredToken() {
+    accessToken = null;
     try {
-        localStorage.removeItem(LS_TOKEN_KEY);
+        sessionStorage.removeItem('wasAuthenticated');
         localStorage.removeItem(LS_TOKEN_EXP);
-    } catch {}
+    } catch { }
 }
 
+/**
+ * Store user account hint for next login
+ * @param {string} email User email address
+ */
 function storeAccountHint(email) {
-    try { if (email) localStorage.setItem(LS_ACCOUNT_HINT, email); } catch {}
+    try { if (email) localStorage.setItem(LS_ACCOUNT_HINT, email); } catch { }
 }
+
+/**
+ * Load stored account hint
+ * @returns {string} Stored email or empty string
+ */
 function loadAccountHint() {
     try { return localStorage.getItem(LS_ACCOUNT_HINT) || ''; } catch { return ''; }
 }
 
 /* ========= Helpers upload ========= */
+/**
+ * Encode file for Document AI processing
+ * @param {File} file Image file to encode
+ * @returns {Promise<string>} Base64 encoded string
+ */
 async function encodeForDocAI(file) {
     if (file.size <= 2.5 * 1024 * 1024) return await fileToBase64NoPrefix(file);
     return await compressToBase64(file, 2400, 0.96, 'image/jpeg');
 }
+
+/**
+ * Reset file input element
+ */
 function resetFileInput() {
     const old = document.getElementById('file');
     if (!old) return;
-    try { old.value = ''; } catch {}
+    try { old.value = ''; } catch { }
     const fresh = old.cloneNode(true);
     old.parentNode.replaceChild(fresh, old);
     fresh.addEventListener('change', onImagePicked);
@@ -191,19 +246,89 @@ function neutralAuthUI(msg = 'Connexion…') {
 }
 
 /* ========= HTTP helper ========= */
-async function api(path, {method = 'GET', headers = {}, body = null} = {}) {
-    const needsAuth = path.startsWith('/auth') || path.startsWith('/sheets') || path.startsWith('/scan');
-    if (needsAuth && !accessToken) {
-        await ensureConnected(false);
-        if (!accessToken) throw new Error('Token absent après ensureConnected');
+/**
+ * Make authenticated API request with automatic retry on 401
+ * @param {string} path API endpoint path
+ * @param {Object} options Request options
+ * @param {string} options.method HTTP method
+ * @param {Object} options.headers Additional headers
+ * @param {*} options.body Request body
+ * @returns {Promise<*>} API response data
+ */
+async function api(path, { method = 'GET', headers = {}, body = null } = {}) {
+    const needsAuth = path.startsWith('/api/') && !path.startsWith('/api/config');
+
+    // Headers par défaut pour toutes les requêtes API
+    const h = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        ...headers
+    };
+
+    // Ajouter l'authentification si nécessaire
+    if (needsAuth) {
+        if (!accessToken) {
+            try {
+                await ensureConnected(false);
+                if (!accessToken) throw new Error('Token absent après ensureConnected');
+            } catch {
+                throw new Error('Connexion requise');
+            }
+        }
+        h['Authorization'] = `Bearer ${accessToken}`;
     }
-    const h = {...headers};
-    if (needsAuth && accessToken) h['Authorization'] = `Bearer ${accessToken}`;
-    const res = await fetch(`${BACK_BASE}${path}`, {method, headers: h, body, credentials: 'omit', cache: 'no-store'});
+
+    const res = await fetch(`${BACK_BASE}${path}`, {
+        method,
+        headers: h,
+        body: body ? (typeof body === 'string' ? body : JSON.stringify(body)) : null,
+        credentials: 'omit',
+        cache: 'no-store'
+    });
+
     const txt = await res.text();
     let json;
     try { json = JSON.parse(txt); } catch { json = null; }
-    if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+
+    if (!res.ok) {
+        // Gestion spéciale des erreurs 401
+        if (res.status === 401 && needsAuth) {
+            try {
+                // Une seule tentative de refresh
+                accessToken = null;
+                clearStoredToken();
+                await ensureConnected(false);
+                if (accessToken) {
+                    // Retry avec le nouveau token
+                    h['Authorization'] = `Bearer ${accessToken}`;
+                    const retryRes = await fetch(`${BACK_BASE}${path}`, {
+                        method,
+                        headers: h,
+                        body: body ? (typeof body === 'string' ? body : JSON.stringify(body)) : null,
+                        credentials: 'omit',
+                        cache: 'no-store'
+                    });
+                    const retryTxt = await retryRes.text();
+                    let retryJson;
+                    try { retryJson = JSON.parse(retryTxt); } catch { retryJson = null; }
+
+                    if (retryRes.ok) {
+                        return retryJson ?? retryTxt;
+                    }
+                }
+            } catch {
+                // Refresh failed, continue to error handling
+            }
+
+            // Si on arrive ici, le refresh a échoué
+            showToast('Session expirée — veuillez vous reconnecter');
+            needAuthUI('Session expirée');
+            throw new Error('Session expirée');
+        }
+
+        throw new Error(json?.error || `HTTP ${res.status}`);
+    }
+
     return json ?? txt;
 }
 
@@ -239,8 +364,8 @@ document.addEventListener('DOMContentLoaded', init);
 window.addEventListener('resize', () => syncPreviewHeight());
 function applyAuthStack() {
     const s = document.getElementById('authStatus');
-    const a = document.getElementById('btnAuth');
-    const sw = document.getElementById('btnSwitch');
+    // const _a = document.getElementById('btnAuth'); // Non utilisé
+    // const _sw = document.getElementById('btnSwitch'); // Non utilisé
     if (!s) return;
     const parent = s.parentElement;
     if (!parent) return;
@@ -252,35 +377,42 @@ document.addEventListener('DOMContentLoaded', applyAuthStack);
 
 async function init() {
     try {
+        // Afficher un splash de connexion
         neutralAuthUI('Connexion…');
+        setStatus('Initialisation...');
+
         await loadConfig();
         bindUI();
         await bootGoogle();
+
+        // Connexion silencieuse avec feedback
+        setStatus('Connexion...');
         await autoSignIn();
+
         syncPreviewHeight();
         initMultiUIGrid();
         setupFloatingActions();
-        renderMultiEmptyIfNeeded(); // si mode multi sans images
-    } catch (e) {
-        console.error('Init error:', e);
+        renderMultiEmptyIfNeeded();
+    } catch {
         setStatus('Config indisponible');
+        needAuthUI('Erreur de configuration');
     }
 }
 
 /* ========= /config ========= */
 async function loadConfig() {
-    const u = new URL(`${BACK_BASE}/config`);
+    const u = new URL(`${BACK_BASE}/api/config`);
     u.searchParams.set('t', String(Date.now()));
-    const cfg = await fetch(u, {cache: 'no-store'}).then(r => r.json());
+    const cfg = await fetch(u, { cache: 'no-store' }).then(r => r.json());
     if (!cfg.ok) throw new Error(cfg.error || 'Config error');
 
     CLIENT_ID = cfg.client_id || null;
     DEFAULT_SHEET = cfg.default_sheet || 'Feuille 1';
-    RECEIPT_API_URL = cfg.receipt_api_url || `${BACK_BASE}/scan`;
+    RECEIPT_API_URL = cfg.receipt_api_url || `${BACK_BASE}/api/scan`;
     MAX_UPLOADS = Number.isFinite(cfg.max_batch) ? Number(cfg.max_batch) : 10;
 
-    renderWhoOptions(Array.isArray(cfg.who_options) ? cfg.who_options : []);
-    console.log('[Config]', cfg, '| BACK_BASE =', BACK_BASE);
+    WHO_OPTIONS = Array.isArray(cfg.who_options) ? cfg.who_options : [];
+    renderWhoOptions(WHO_OPTIONS);
 }
 
 /* ========= UI ========= */
@@ -317,8 +449,6 @@ function bindUI() {
 
     // Multi
     $('#multiFiles')?.addEventListener('change', onMultiFilesPicked);
-    $('#btnBatchSave')?.addEventListener('click', runBatchSave);
-    $('#btnBatchReset')?.addEventListener('click', clearMulti);
 
     switchMode('single');
 }
@@ -332,7 +462,7 @@ function renderWhoOptions(names = []) {
     if (!wrap) return;
 
     if (!Array.isArray(names) || names.length === 0) {
-        wrap.innerHTML = `<span class="subtle">Aucun profil configuré.</span>`;
+        wrap.innerHTML = '<span class="subtle">Aucun profil configuré.</span>';
         return;
     }
     const last = localStorage.getItem(LS_WHO);
@@ -384,7 +514,7 @@ function validateCanSave() {
 /* ========= Google ========= */
 async function bootGoogle() {
     if (!CLIENT_ID) { setStatus('CLIENT_ID manquant'); }
-    await waitFor(() => window.google?.accounts?.oauth2, 150, 10000).catch(() => {});
+    await waitFor(() => window.google?.accounts?.oauth2, 150, 10000).catch(() => { });
     if (window.google?.accounts?.oauth2 && CLIENT_ID) {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID, scope: 'openid email profile', prompt: '',
@@ -397,19 +527,38 @@ async function bootGoogle() {
         });
         gisReady = true;
     }
-    await waitFor(() => typeof gapi !== 'undefined', 150, 10000).catch(() => {});
+    await waitFor(() => typeof gapi !== 'undefined', 150, 10000).catch(() => { });
     if (typeof gapi !== 'undefined') {
         await new Promise(r => gapi.load('client', r));
-        await gapi.client.init({discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/oauth2/v2/rest']});
+        await gapi.client.init({ discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/oauth2/v2/rest'] });
         gapiReady = true;
     }
 }
 
 async function autoSignIn() {
     try {
-        await ensureConnected(false);
-        await afterSignedIn();
-        setStatus('Connecté ✓');
+        // Essayer de se connecter avec un token en cache
+        const cached = loadValidToken();
+        if (cached) {
+            accessToken = cached;
+            await afterSignedIn();
+            setStatus('Connecté ✓');
+            return;
+        }
+
+        // Tentative de connexion silencieuse avec Google Identity
+        if (gisReady && CLIENT_ID) {
+            try {
+                await ensureConnected(false); // false = pas de popup forcé
+                await afterSignedIn();
+                setStatus('Connecté ✓');
+                return;
+            } catch {
+                // Continue vers l'UI de connexion
+            }
+        }
+
+        needAuthUI('Veuillez vous connecter.');
     } catch (e) {
         if (isUnauthorizedEmailError(e)) handleAuthError(e); else needAuthUI('Veuillez vous connecter.');
     }
@@ -428,7 +577,7 @@ async function ensureConnected(forceConsent = false) {
             if (resp.expires_in) storeToken(accessToken, Number(resp.expires_in));
             resolve();
         };
-        tokenClient.requestAccessToken({prompt: forceConsent ? 'consent' : '', hint: hint || undefined});
+        tokenClient.requestAccessToken({ prompt: forceConsent ? 'consent' : '', hint: hint || undefined });
     }).catch(async err => {
         const needConsent = err && (String(err.error).includes('consent') || String(err.error).includes('interaction'));
         if (!needConsent && !forceConsent) throw err;
@@ -439,14 +588,14 @@ async function ensureConnected(forceConsent = false) {
                 if (resp2.expires_in) storeToken(accessToken, Number(resp2.expires_in));
                 resolve2();
             };
-            tokenClient.requestAccessToken({prompt: 'consent', hint: hint || undefined});
+            tokenClient.requestAccessToken({ prompt: 'consent', hint: hint || undefined });
         });
     });
 }
 
 async function afterSignedIn() {
     let me;
-    try { me = await api('/auth/me'); }
+    try { me = await api('/api/auth/me'); }
     catch (e) { handleAuthError(e); throw e; }
 
     currentUserEmail = me.email || null;
@@ -454,12 +603,12 @@ async function afterSignedIn() {
 
     try {
         if (gapiReady && accessToken) {
-            gapi.client.setToken({access_token: accessToken});
+            gapi.client.setToken({ access_token: accessToken });
             const ui = await gapi.client.oauth2.userinfo.get();
             currentUserEmail = (ui.result?.email || currentUserEmail || '').toLowerCase();
             if (currentUserEmail) storeAccountHint(currentUserEmail);
         }
-    } catch {}
+    } catch { }
     if (accessToken && !loadValidToken()) storeToken(accessToken, 55 * 60);
 
     if (currentUserEmail) {
@@ -476,10 +625,9 @@ function isUnauthorizedEmailError(err) {
     const msg = String(err?.message || err || '');
     return /Email non autoris(é|e)/i.test(msg) || /403/.test(msg);
 }
-function handleAuthError(err, {showButton = true} = {}) {
-    console.error('Auth error:', err);
-    const raw = String(err?.message || 'Erreur d’authentification');
-    signOutQuiet({keepHint: false});
+function handleAuthError(err, { showButton = true } = {}) {
+    const raw = String(err?.message || '\'Erreur d\'authentification\'');
+    signOutQuiet({ keepHint: false });
     const isUnauth = isUnauthorizedEmailError(err);
     setAuthStatus(isUnauth ? (raw || 'Email non autorisé') : 'Connexion requise.', false);
     if (showButton) showAuthButton(); else hideAuthButton();
@@ -490,7 +638,7 @@ function handleAuthError(err, {showButton = true} = {}) {
 
 /* ========= Sheets ========= */
 async function populateSheets() {
-    const res = await api('/sheets');
+    const res = await api('/api/sheets');
     const props = (res.sheets || []).sort((a, b) => (a.index || 0) - (b.index || 0));
     const sel = $('#sheetSelect');
     if (!sel) return;
@@ -504,7 +652,7 @@ function waitFor(test, every = 100, timeout = 10000) {
     return new Promise((resolve, reject) => {
         const t0 = Date.now();
         (function loop() {
-            try { if (test()) return resolve(); } catch {}
+            try { if (test()) return resolve(); } catch { }
             if (Date.now() - t0 > timeout) return reject(new Error('waitFor timeout'));
             setTimeout(loop, every);
         })();
@@ -520,16 +668,16 @@ async function onImagePicked(e) {
     setPreview(URL.createObjectURL(file));
     try {
         if (!accessToken) await ensureConnected(false);
-        await api('/auth/me');
+        await api('/api/auth/me');
         const b64 = await encodeForDocAI(file);
         const resp = await fetch(RECEIPT_API_URL, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json', ...(accessToken ? {'Authorization': `Bearer ${accessToken}`} : {})},
-            body: JSON.stringify({imageBase64: b64})
+            headers: { 'Content-Type': 'application/json', ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {}) },
+            body: JSON.stringify({ imageBase64: b64 })
         });
         const txt = await resp.text();
         let json = {};
-        try { json = JSON.parse(txt); } catch {}
+        try { json = JSON.parse(txt); } catch { }
         if (!resp.ok || json.ok === false) throw new Error(json.error || `HTTP ${resp.status}`);
         if (json.supplier_name) $('#merchant').value = json.supplier_name;
         if (json.receipt_date) $('#date').value = json.receipt_date;
@@ -537,10 +685,10 @@ async function onImagePicked(e) {
         setStatus('Reconnaissance OK. Vérifie puis « Enregistrer ».');
     } catch (err) {
         if (isUnauthorizedEmailError(err)) handleAuthError(err);
-        else { console.error(err); setStatus('Analyse indisponible — complète manuellement.'); }
+        else { setStatus('Analyse indisponible — complète manuellement.'); }
     } finally {
         const fi = document.getElementById('file');
-        if (fi) { try { fi.value = ''; } catch {} }
+        if (fi) { try { fi.value = ''; } catch { } }
         validateCanSave();
         syncPreviewHeight();
     }
@@ -561,7 +709,7 @@ function fileToBase64NoPrefix(file) {
 async function saveToSheet() {
     try {
         if (!accessToken) await ensureConnected(false);
-        await api('/auth/me');
+        await api('/api/auth/me');
         const sheetName = $('#sheetSelect')?.value || DEFAULT_SHEET;
         const who = document.querySelector('input[name="whoTop"]:checked')?.value || '';
         const supplier = ($('#merchant').value || '').trim();
@@ -569,17 +717,17 @@ async function saveToSheet() {
         const totalNum = parseEuroToNumber($('#total').value);
         if (!supplier || !dateISO || totalNum == null || !sheetName || !who) throw new Error('Champs incomplets');
         setStatus('Écriture…');
-        const res = await api('/sheets/write', {
+        const res = await api('/api/sheets/write', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({sheetName, who, supplier, dateISO, total: totalNum})
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sheetName, who, supplier, dateISO, total: totalNum })
         });
         if (!res.ok) throw new Error(res.error || 'Échec écriture');
         setStatus(`Enregistré ✔ (onglet « ${sheetName} », ${who})`);
         enableSave(false);
     } catch (e) {
         if (isUnauthorizedEmailError(e)) handleAuthError(e);
-        else { console.error(e); setStatus('Erreur : ' + (e.message || e)); }
+        else { setStatus('Erreur : ' + (e.message || e)); }
     }
 }
 
@@ -589,14 +737,14 @@ async function revokeAccessToken(token) {
     try {
         await fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(token), {
             method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
         });
-    } catch {}
+    } catch { }
 }
-function signOutQuiet({keepHint = true} = {}) {
+function signOutQuiet({ keepHint = true } = {}) {
     if (accessToken) revokeAccessToken(accessToken);
     clearStoredToken();
-    if (!keepHint) { try { localStorage.removeItem(LS_ACCOUNT_HINT); } catch {} }
+    if (!keepHint) { try { localStorage.removeItem(LS_ACCOUNT_HINT); } catch { } }
     accessToken = null;
     currentUserEmail = null;
     hideSwitchButton();
@@ -631,10 +779,10 @@ async function switchAccount() {
         else { needAuthUI('Veuillez vous connecter.'); }
     }
 }
-function signOut({keepHint = true} = {}) {
-    signOutQuiet({keepHint});
-    needAuthUI('Déconnecté');
-}
+// function signOut({ keepHint = true } = {}) {
+//     signOutQuiet({ keepHint });
+//     needAuthUI('Déconnecté');
+// }
 
 /* ========================================================================
    MODE MULTIPLE
@@ -655,10 +803,7 @@ function setupFloatingActions() {
     if (_fabMounted) return;
 
     const fileInput = document.getElementById('multiFiles');
-    const saveBtn   = document.getElementById('btnBatchSave');
-    const resetBtn  = document.getElementById('btnBatchReset');
-    if (!fileInput || !saveBtn || !resetBtn) {
-        console.warn('[FAB] éléments manquants (#multiFiles, #btnBatchSave, #btnBatchReset)');
+    if (!fileInput) {
         return;
     }
 
@@ -676,17 +821,26 @@ function setupFloatingActions() {
     addLabel.innerHTML = '<span class="fab-icon" aria-hidden="true">+</span>';
     _fabAddLabel = addLabel;
 
-    // 💾 Enregistrer (on déplace le bouton existant)
+    // 💾 Enregistrer (nouveau bouton)
+    const saveBtn = document.createElement('button');
+    saveBtn.id = 'btnBatchSave';
     saveBtn.className = 'fab-btn fab-save';
     saveBtn.title = 'Enregistrer tout';
     saveBtn.setAttribute('aria-label', 'Enregistrer tout');
     saveBtn.innerHTML = '<span class="fab-icon" aria-hidden="true">💾</span>';
+    saveBtn.disabled = true;
 
-    // 🗑️ Vider (on déplace le bouton existant)
+    // 🗑️ Vider (nouveau bouton)
+    const resetBtn = document.createElement('button');
+    resetBtn.id = 'btnBatchReset';
     resetBtn.className = 'fab-btn fab-clear';
     resetBtn.title = 'Vider';
     resetBtn.setAttribute('aria-label', 'Vider');
     resetBtn.innerHTML = '<span class="fab-icon" aria-hidden="true">🗑️</span>';
+
+    // Ajouter les event listeners
+    saveBtn.addEventListener('click', runBatchSave);
+    resetBtn.addEventListener('click', clearMulti);
 
     // ordre : ajouter / enregistrer / vider
     wrap.appendChild(addLabel);
@@ -767,7 +921,7 @@ function switchMode(mode) {
 async function onMultiFilesPicked(e) {
     const incoming = Array.from(e.target.files || []);
     if (!incoming.length) return;
-    try { e.target.value = ''; } catch {}
+    try { e.target.value = ''; } catch { }
 
     const remaining = Math.max(0, MAX_UPLOADS - multiItems.length);
     if (remaining <= 0) {
@@ -786,12 +940,14 @@ async function onMultiFilesPicked(e) {
     for (const f of files) {
         const id = 'card_' + Math.random().toString(36).slice(2);
         const thumbUrl = URL.createObjectURL(f);
-        multiItems.push({id, file: f, thumbUrl, status: 'En attente…', supplier: '', dateISO: '', total: null});
-        renderCard({id, thumbUrl, status: 'En attente…'});
+        multiItems.push({ id, file: f, thumbUrl, status: 'En attente…', supplier: '', dateISO: '', total: null });
+        renderCard({ id, thumbUrl, status: 'En attente…' });
     }
     renderMultiEmptyIfNeeded();
     updateBatchButtons();
-    runBatchScan().catch(console.error);
+    runBatchScan().catch(() => {
+        // Error handling is done in runBatchScan
+    });
 }
 
 /** Rendu carte */
@@ -802,7 +958,7 @@ function renderCard(item) {
     const status = String(item.status || '').toUpperCase();
     const statusClass =
         status.startsWith('ANALY') ? 'status-analyse' :
-            status === 'OK'            ? 'status-ok' :
+            status === 'OK' ? 'status-ok' :
                 status ? 'status-error' : '';
 
     const html = `
@@ -815,26 +971,26 @@ function renderCard(item) {
 
       <div class="mb-2">
         <label class="form-label small">Intitulé (enseigne)</label>
-        <input type="text" class="form-control form-control-sm" data-k="supplier" value="${item.supplier||''}">
+        <input type="text" class="form-control form-control-sm" data-k="supplier" value="${item.supplier || ''}">
       </div>
       <div class="mb-2">
         <label class="form-label small">Date</label>
-        <input type="date" class="form-control form-control-sm" data-k="dateISO" value="${item.dateISO||''}">
+        <input type="date" class="form-control form-control-sm" data-k="dateISO" value="${item.dateISO || ''}">
       </div>
       <div class="mb-2">
         <label class="form-label small">Total (€)</label>
-        <input type="text" inputmode="decimal" class="form-control form-control-sm" data-k="total" value="${item.total!=null?String(item.total):''}">
+        <input type="text" inputmode="decimal" class="form-control form-control-sm" data-k="total" value="${item.total != null ? String(item.total) : ''}">
       </div>
     </div>
   `;
     if (!card) { card = document.createElement('div'); card.id = item.id; wrap.appendChild(card); }
     card.innerHTML = html;
 
-    card.querySelectorAll('input[data-k]').forEach(inp=>{
+    card.querySelectorAll('input[data-k]').forEach(inp => {
         inp.addEventListener('input', () => {
             const k = inp.getAttribute('data-k');
-            const it = multiItems.find(x=>x.id===item.id); if (!it) return;
-            if (k==='total') it.total = parseFloat(String(inp.value).replace(',','.'));
+            const it = multiItems.find(x => x.id === item.id); if (!it) return;
+            if (k === 'total') it.total = parseFloat(String(inp.value).replace(',', '.'));
             else it[k] = inp.value;
         });
     });
@@ -854,13 +1010,13 @@ function clearMulti() {
 function loadImageURL(url) {
     return new Promise((resolve, reject) => {
         const img = new Image();
-        img.onload = () => resolve({img, url});
+        img.onload = () => resolve({ img, url });
         img.onerror = reject;
         img.src = url;
     });
 }
 async function compressToBase64(file, maxLongSide = 2400, quality = 0.96, mime = 'image/jpeg') {
-    const {img, url} = await loadImageURL(URL.createObjectURL(file));
+    const { img, url } = await loadImageURL(URL.createObjectURL(file));
     const longSide = Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height);
     const ratio = Math.min(1, maxLongSide / longSide);
     const w = Math.round((img.naturalWidth || img.width) * ratio);
@@ -880,14 +1036,15 @@ async function compressToBase64(file, maxLongSide = 2400, quality = 0.96, mime =
 /** Concurrence */
 function runWithConcurrency(items, worker, concurrency = 3) {
     return new Promise((resolve) => {
-        let i = 0, running = 0, results = [];
+        let i = 0, running = 0;
+        const results = [];
         function next() {
             while (running < concurrency && i < items.length) {
                 const idx = i++;
                 running++;
                 Promise.resolve(worker(items[idx], idx))
                     .then(r => results[idx] = r)
-                    .catch(e => results[idx] = {ok: false, error: String(e)})
+                    .catch(e => results[idx] = { ok: false, error: String(e) })
                     .finally(() => {
                         running--;
                         if (results.length === items.length && !results.includes(undefined)) resolve(results);
@@ -907,7 +1064,7 @@ async function runBatchScan() {
 
     try {
         if (!accessToken) await ensureConnected(false);
-        await api('/auth/me');
+        await api('/api/auth/me');
 
         const worker = async (it) => {
             const card = document.getElementById(it.id);
@@ -915,27 +1072,26 @@ async function runBatchScan() {
             if (card) renderCard(it);
 
             const b64 = await encodeForDocAI(it.file);
-            const resp = await fetch(`${BACK_BASE}/scan`, {
+            const resp = await fetch(`${BACK_BASE}/api/scan`, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`},
-                body: JSON.stringify({imageBase64: b64})
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+                body: JSON.stringify({ imageBase64: b64 })
             });
             const json = await resp.json();
             if (!resp.ok || json.ok === false) throw new Error(json.error || `HTTP ${resp.status}`);
             it.supplier = json.supplier_name || '';
-            it.dateISO  = json.receipt_date || '';
-            it.total    = (json.total_amount!=null) ? Number(json.total_amount) : null;
-            it.status   = 'OK';
+            it.dateISO = json.receipt_date || '';
+            it.total = (json.total_amount != null) ? Number(json.total_amount) : null;
+            it.status = 'OK';
             renderCard(it);
-            return { ok:true };
+            return { ok: true };
         };
 
         await runWithConcurrency(multiItems, worker, 3);
 
-    } catch (e) {
-        console.error(e);
-        multiItems.forEach(it=>{
-            if (it.status!=='OK'){
+    } catch {
+        multiItems.forEach(it => {
+            if (it.status !== 'OK') {
                 it.status = 'Erreur';
                 renderCard(it);
             }
@@ -949,7 +1105,7 @@ async function runBatchScan() {
 async function runBatchSave() {
     try {
         if (!accessToken) await ensureConnected(false);
-        await api('/auth/me');
+        await api('/api/auth/me');
 
         const sheetName = $('#sheetSelect')?.value || DEFAULT_SHEET;
         const who = document.querySelector('input[name="whoTop"]:checked')?.value || '';
@@ -967,9 +1123,9 @@ async function runBatchSave() {
         if (!rows.length) throw new Error('Aucune carte complète à enregistrer.');
 
         const writer = async (r) => {
-            const res = await api('/sheets/write', {
-                method:'POST',
-                headers:{ 'Content-Type':'application/json' },
+            const res = await api('/api/sheets/write', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sheetName, who, supplier: r.supplier, dateISO: r.dateISO, total: r.total })
             });
 
@@ -979,13 +1135,13 @@ async function runBatchSave() {
                 if (res.ok) {
                     if (badge) {
                         badge.textContent = 'Enregistré ✔';
-                        badge.classList.remove('status-analyse','status-error');
+                        badge.classList.remove('status-analyse', 'status-error');
                         badge.classList.add('status-ok');
                     }
                 } else {
                     if (badge) {
                         badge.textContent = 'Erreur écriture';
-                        badge.classList.remove('status-analyse','status-ok');
+                        badge.classList.remove('status-analyse', 'status-ok');
                         badge.classList.add('status-error');
                     }
                 }
@@ -997,7 +1153,6 @@ async function runBatchSave() {
         setStatus(`Enregistrement terminé (${rows.length} lignes).`);
 
     } catch (e) {
-        console.error(e);
         setStatus('Erreur enregistrement multiple : ' + (e.message || e));
     }
 }
@@ -1006,7 +1161,8 @@ async function runBatchSave() {
 function updateBatchButtons() {
     const any = multiItems.length > 0;
     const allAnalysed = any && multiItems.every(it => it.status === 'OK');
-    if ($('#btnBatchSave')) $('#btnBatchSave').disabled = !allAnalysed;
+    const saveBtn = document.getElementById('btnBatchSave');
+    if (saveBtn) saveBtn.disabled = !allAnalysed;
 
     const addInp = $('#multiFiles');
     if (addInp) {

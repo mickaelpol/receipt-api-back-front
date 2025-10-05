@@ -1,6 +1,56 @@
-backend/vendor
-.env
-backend/keys/*.json
-.idea/
-dist/
+# Dependencies
+backend/vendor/
 node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Google Cloud keys (sensitive)
+backend/keys/*.json
+*.json
+!package.json
+!composer.json
+
+# Docker
+.dockerignore
+
+# Git
+.git/
+.gitignore
+
+# Archive branches (cleanup)
+archive-*
+
+# Test files
+test.md
+*.test.md
+
+# Backup files
+*.bak
+*.backup

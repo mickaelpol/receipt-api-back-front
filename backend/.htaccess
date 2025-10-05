@@ -1,75 +1,16 @@
-# ===== backend/.htaccess — local + Cloud Run, CORS propre =====
-# Nécessite mod_rewrite ET mod_headers
+## Backend API Router - No static serving
+RewriteEngine On
 
-<IfModule mod_rewrite.c>
-  RewriteEngine On
+# Route all requests to index.php (API only)
+RewriteRule ^(.*)$ index.php [QSA,L]
 
-  # --- [LOCAL] OPTIONS (preflight) : répondre 204 au front (8081) avant toute redirection
-  RewriteCond %{REQUEST_METHOD} =OPTIONS
-  RewriteCond %{HTTP:Origin} ^http://localhost:8081$ [NC]
-  RewriteRule ^ - [R=204,END]
-</IfModule>
-
-# --- [LOCAL] CORS : autoriser UNIQUEMENT http://localhost:8081 ---
-<IfModule mod_headers.c>
-  # Marquer l'origine si elle correspond
-  SetEnvIf Origin "^http://localhost:8081$" ACAO_ORIGIN=$0
-
-  # Nettoyer d'éventuels doublons
-  Header always unset Access-Control-Allow-Origin
-  Header always unset Access-Control-Allow-Headers
-  Header always unset Access-Control-Allow-Methods
-  Header always unset Access-Control-Allow-Credentials
-  Header always unset Vary
-
-  # Poser une fois
-  Header always set Access-Control-Allow-Origin %{ACAO_ORIGIN}e env=ACAO_ORIGIN
-  Header always set Vary Origin env=ACAO_ORIGIN
-  Header always set Access-Control-Allow-Credentials true env=ACAO_ORIGIN
-  Header always set Access-Control-Allow-Methods "GET,POST,PUT,PATCH,DELETE,OPTIONS" env=ACAO_ORIGIN
-  Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With" env=ACAO_ORIGIN
-  Header always set Access-Control-Max-Age "86400" env=ACAO_ORIGIN
-</IfModule>
-
-<IfModule mod_rewrite.c>
-  # --- [PROD] forcer HTTPS (Cloud Run) sauf localhost/.local
-  RewriteCond %{HTTP:X-Forwarded-Proto} !https
-  RewriteCond %{HTTPS} !=on
-  RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:\d+)?$ [NC]
-  RewriteCond %{HTTP_HOST} !\.local(:\d+)?$ [NC]
-  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
-
-  # --- [UI] si on appelle la racine, servir le frontend (/ui/)
-  RewriteRule ^$ ui/ [L]
-
-  # Laisser passer les fichiers/dossiers existants (assets de l'UI)
-  RewriteCond %{REQUEST_FILENAME} -f [OR]
-  RewriteCond %{REQUEST_FILENAME} -d
-  RewriteRule ^ - [L]
-
-  # --- [API] router les endpoints vers index.php
-  RewriteCond %{REQUEST_URI} ^/(config|auth(?:/.*)?|sheets(?:/.*)?|scan(?:/.*)?)$ [NC]
-  RewriteRule ^ index.php [QSA,L]
-</IfModule>
-
-# Sécurité basique
-Options -Indexes
-
-# Bloquer fichiers sensibles
-<FilesMatch "^(composer\.json|composer\.lock|\.env|.*\.(ini|log|ya?ml))$">
-  Require all denied
-</FilesMatch>
-
-# Bloquer fichiers cachés (.git, .ht*)
-<FilesMatch "^\.">
-  Require all denied
-</FilesMatch>
-
-# Headers de sécurité
-<IfModule mod_headers.c>
-  Header always set X-Content-Type-Options "nosniff"
-  Header always set X-Frame-Options "SAMEORIGIN"
-  Header always set X-XSS-Protection "1; mode=block"
-  Header always set Referrer-Policy "strict-origin-when-cross-origin"
-  Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
-</IfModule>
+# Security: Deny access to sensitive files
+<Files "*.json">
+    Require all denied
+</Files>
+<Files "*.key">
+    Require all denied
+</Files>
+<Files "composer.*">
+    Require all denied
+</Files>
