@@ -42,9 +42,9 @@ steps:
     args:
       - 'build'
       - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/receipt-api/receipt-parser:$SHORT_SHA'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/apps-ticket/receipt-parser:$SHORT_SHA'
       - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/receipt-api/receipt-parser:latest'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/apps-ticket/receipt-parser:latest'
       - '-f'
       - 'Dockerfile'
       - '.'
@@ -55,7 +55,7 @@ steps:
     id: 'push-image'
     args:
       - 'push'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/receipt-api/receipt-parser:$SHORT_SHA'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/apps-ticket/receipt-parser:$SHORT_SHA'
     timeout: '300s'  # 5 minutes timeout
 
   # Step 4: Deploy to Cloud Run (staging or prod)
@@ -66,7 +66,7 @@ steps:
       - 'deploy'
       - '${_SERVICE_NAME}'
       - '--image'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/receipt-api/receipt-parser:$SHORT_SHA'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/apps-ticket/receipt-parser:$SHORT_SHA'
       - '--region'
       - '${_REGION}'
       - '--platform'
@@ -153,7 +153,7 @@ steps:
         
         Environment: ${_ENV}
         Commit: $COMMIT_SHA
-        Image: ${_REGION}-docker.pkg.dev/$PROJECT_ID/receipt-api/receipt-parser:$SHORT_SHA
+        Image: ${_REGION}-docker.pkg.dev/$PROJECT_ID/apps-ticket/receipt-parser:$SHORT_SHA
         Service URL: $$SERVICE_URL
         
         Build Log: https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=$PROJECT_ID
