@@ -280,19 +280,113 @@ function requireGoogleUserAllowed(array $allowed, string $clientId): array
 }
 
 /**
- * Get service account token
+ * Validate Google Application Credentials
+ * @return array Validation result with status and details
+ */
+function validateGoogleCredentials(): array
+{
+    $credentialsPath = getenv('GOOGLE_APPLICATION_CREDENTIALS');
+    
+    if (!$credentialsPath) {
+        return [
+            'valid' => false,
+            'error' => 'GOOGLE_APPLICATION_CREDENTIALS not set',
+            'code' => 'MISSING_ENV'
+        ];
+    }
+    
+    if (!file_exists($credentialsPath)) {
+        return [
+            'valid' => false,
+            'error' => "Credentials file does not exist: $credentialsPath",
+            'code' => 'FILE_NOT_FOUND'
+        ];
+    }
+    
+    if (!is_readable($credentialsPath)) {
+        return [
+            'valid' => false,
+            'error' => "Credentials file not readable: $credentialsPath",
+            'code' => 'FILE_NOT_READABLE'
+        ];
+    }
+    
+    // Try to parse JSON
+    $content = file_get_contents($credentialsPath);
+    if ($content === false) {
+        return [
+            'valid' => false,
+            'error' => "Cannot read credentials file: $credentialsPath",
+            'code' => 'FILE_READ_ERROR'
+        ];
+    }
+    
+    $json = json_decode($content, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        return [
+            'valid' => false,
+            'error' => 'Invalid JSON in credentials file: ' . json_last_error_msg(),
+            'code' => 'INVALID_JSON'
+        ];
+    }
+    
+    // Validate required fields
+    $requiredFields = ['type', 'project_id', 'private_key', 'client_email'];
+    foreach ($requiredFields as $field) {
+        if (!isset($json[$field]) || empty($json[$field])) {
+            return [
+                'valid' => false,
+                'error' => "Missing required field in credentials: $field",
+                'code' => 'MISSING_FIELD'
+            ];
+        }
+    }
+    
+    if ($json['type'] !== 'service_account') {
+        return [
+            'valid' => false,
+            'error' => 'Invalid credentials type, expected service_account',
+            'code' => 'INVALID_TYPE'
+        ];
+    }
+    
+    return [
+        'valid' => true,
+        'project_id' => $json['project_id'],
+        'client_email' => $json['client_email'],
+        'path' => $credentialsPath
+    ];
+}
+
+/**
+ * Get service account token with credential validation
  * @param array $scopes Required scopes
  * @return string Access token
+ * @throws RuntimeException If credentials are invalid or token cannot be obtained
  */
 function saToken(array $scopes): string
 {
-    $c = ApplicationDefaultCredentials::getCredentials($scopes);
-    $t = $c->fetchAuthToken();
-    $a = $t['access_token'] ?? '';
-    if (!$a) {
-        throw new RuntimeException('Impossible d\'obtenir un access_token SA');
+    // Validate credentials first
+    $validation = validateGoogleCredentials();
+    if (!$validation['valid']) {
+        throw new RuntimeException("Invalid credentials: {$validation['error']}");
     }
-    return $a;
+    
+    try {
+        $c = ApplicationDefaultCredentials::getCredentials($scopes);
+        $t = $c->fetchAuthToken();
+        $a = $t['access_token'] ?? '';
+        if (!$a) {
+            throw new RuntimeException('Impossible d\'obtenir un access_token SA');
+        }
+        return $a;
+    } catch (Exception $e) {
+        logMessage('error', 'Failed to get service account token', [
+            'error' => $e->getMessage(),
+            'scopes' => $scopes
+        ]);
+        throw new RuntimeException('Erreur d\'authentification service account: ' . $e->getMessage());
+    }
 }
 
 /**

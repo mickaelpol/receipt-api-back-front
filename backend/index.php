@@ -87,6 +87,70 @@ if ($path === '/api/debug/headers') {
     exit;
 }
 
+/* ---- GET /api/health ---- */
+if ($path === '/api/health' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+    // Basic health check - just verify the process is alive
+    sendJsonResponse([
+        'ok' => true,
+        'status' => 'alive',
+        'timestamp' => date('c')
+    ]);
+}
+
+/* ---- GET /api/ready ---- */
+if ($path === '/api/ready' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+    // Readiness check - verify credentials and critical dependencies
+    $validation = validateGoogleCredentials();
+    
+    if (!$validation['valid']) {
+        http_response_code(503);
+        sendJsonResponse([
+            'ok' => false,
+            'status' => 'not_ready',
+            'error' => $validation['error'],
+            'code' => $validation['code'],
+            'timestamp' => date('c')
+        ]);
+    }
+    
+    // Check other critical environment variables
+    $criticalEnvVars = [
+        'GOOGLE_OAUTH_CLIENT_ID' => $CLIENT_ID,
+        'SPREADSHEET_ID' => $SPREADSHEET_ID,
+        'GCP_PROJECT_ID' => $PROJECT_ID,
+        'GCP_PROCESSOR_ID' => $PROCESSOR_ID
+    ];
+    
+    $missingVars = [];
+    foreach ($criticalEnvVars as $var => $value) {
+        if (empty($value)) {
+            $missingVars[] = $var;
+        }
+    }
+    
+    if (!empty($missingVars)) {
+        http_response_code(503);
+        sendJsonResponse([
+            'ok' => false,
+            'status' => 'not_ready',
+            'error' => 'Missing required environment variables: ' . implode(', ', $missingVars),
+            'code' => 'MISSING_ENV_VARS',
+            'timestamp' => date('c')
+        ]);
+    }
+    
+    sendJsonResponse([
+        'ok' => true,
+        'status' => 'ready',
+        'credentials' => [
+            'valid' => true,
+            'project_id' => $validation['project_id'] ?? null,
+            'client_email' => $validation['client_email'] ?? null
+        ],
+        'timestamp' => date('c')
+    ]);
+}
+
 /* ---- GET /api/config ---- */
 if ($path === '/api/config' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
     // Cache court pour éviter les requêtes répétées

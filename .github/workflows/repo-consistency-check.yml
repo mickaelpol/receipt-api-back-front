@@ -1,0 +1,90 @@
+name: Repository Consistency Check
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Vérification quotidienne à 2h du matin
+    - cron: '0 2 * * *'
+
+jobs:
+  consistency-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup permissions
+      run: |
+        chmod +x scripts/*.sh
+        
+    - name: Check repository consistency
+      run: |
+        echo "🔍 Vérification de la consistance du repository..."
+        ./scripts/check-repo-consistency.sh
+        
+    - name: Check for orphan files
+      run: |
+        echo "🔍 Détection des fichiers orphelins..."
+        ./scripts/check-orphan-files.sh
+        
+    - name: Check for multiple READMEs
+      run: |
+        echo "🔍 Vérification des README multiples..."
+        README_COUNT=$(find . -name "README.md" -not -path "./.git/*" | wc -l)
+        if [ "$README_COUNT" -gt 1 ]; then
+          echo "❌ Plusieurs README.md trouvés:"
+          find . -name "README.md" -not -path "./.git/*"
+          exit 1
+        else
+          echo "✅ Un seul README.md trouvé"
+        fi
+        
+    - name: Check for orphan documentation
+      run: |
+        echo "🔍 Vérification des docs orphelines..."
+        ORPHAN_DOCS=$(find . -name "*.md" -not -name "README.md" -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./vendor/*" 2>/dev/null || true)
+        if [ -n "$ORPHAN_DOCS" ]; then
+          echo "❌ Docs orphelines détectées:"
+          echo "$ORPHAN_DOCS"
+          exit 1
+        else
+          echo "✅ Aucune doc orpheline trouvée"
+        fi
+        
+    - name: Check project structure
+      run: |
+        echo "🔍 Vérification de la structure du projet..."
+        EXPECTED_DIRS=("frontend" "backend" "infra" "scripts")
+        for dir in "${EXPECTED_DIRS[@]}"; do
+          if [ ! -d "$dir" ]; then
+            echo "❌ Dossier $dir manquant"
+            exit 1
+          else
+            echo "✅ Dossier $dir présent"
+          fi
+        done
+        
+    - name: Check for temporary files
+      run: |
+        echo "🔍 Vérification des fichiers temporaires..."
+        TEMP_FILES=$(find . -name "*.tmp" -o -name "*.log" -o -name "*.cache" -o -name ".DS_Store" -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./vendor/*" 2>/dev/null || true)
+        if [ -n "$TEMP_FILES" ]; then
+          echo "⚠️ Fichiers temporaires détectés:"
+          echo "$TEMP_FILES"
+          echo "💡 Considérez les supprimer pour maintenir la propreté du repo"
+        else
+          echo "✅ Aucun fichier temporaire trouvé"
+        fi
+        
+    - name: Summary
+      run: |
+        echo ""
+        echo "🎉 Vérifications de consistance terminées !"
+        echo "   - Structure du projet ✅"
+        echo "   - README unique ✅"
+        echo "   - Aucune doc orpheline ✅"
+        echo "   - Fichiers orphelins vérifiés ✅"

@@ -1,418 +1,560 @@
-# 📄 Receipt API - Scanner de Tickets vers Google Sheets
+# Receipt API - Scanner de Reçus avec IA
 
-Application web moderne pour scanner des tickets de caisse et les enregistrer automatiquement dans Google Sheets via Google Document AI.
+Application web pour scanner et analyser des reçus en utilisant Google Document AI et Google Sheets.
 
-## 🚀 Fonctionnalités
+## 🚀 Vue d'ensemble
 
-### ✨ Scanner de tickets
-- **Mode simple** : Scanner un ticket à la fois avec aperçu
-- **Mode multiple** : Scanner jusqu'à 10 tickets en une fois
-- **Reconnaissance automatique** : Extraction automatique du montant, date et enseigne
-- **Interface mobile** : Optimisée pour smartphones et tablettes
+Cette application permet de :
+- Scanner des reçus via l'interface web
+- Analyser automatiquement le contenu avec Google Document AI
+- Sauvegarder les données dans Google Sheets
+- Gérer l'authentification Google OAuth
 
-### 🔐 Authentification Google
-- **Connexion sécurisée** : OAuth2 avec Google Identity
-- **Session persistante** : Reconnexion automatique silencieuse
-- **Gestion des tokens** : Stockage sécurisé en mémoire uniquement
+## 🎨 Identité Visuelle & Favicon
 
-### 📊 Intégration Google Sheets
-- **Écriture automatique** : Enregistrement direct dans Google Sheets
-- **Gestion multi-utilisateurs** : Colonnes dédiées par utilisateur
-- **Formatage intelligent** : Dates formatées automatiquement
+### Brand Identity
+- **Nom de marque** : **Scan2Sheet**
+- **Concept d'icône** : Ticket + faisceau de scan (flat, professionnel/technologique, fond transparent)
+- **Palette de couleurs** :
+  - Primaire : `#1A73E8` (Bleu Google)
+  - Accent : `#34A853` (Vert Google)
+  - Arrière-plan : `#FFFFFF` (Blanc)
+  - Texte neutre : `#0F172A` (Gris foncé)
+
+### Icônes & Favicon
+- **Dossier** : `frontend/assets/icons/`
+- **Formats requis** : ICO (16/32/48), PNG (16/32/48/64), Apple Touch (180×180), Web App (192×192 & 512×512), Maskable (192×192 & 512×512), Safari pinned tab (SVG monochrome)
+- **Manifest** : `frontend/manifest.json`
+- **Références** : Intégrées dans `frontend/index.html`
+
+#### Fichiers d'icônes générés
+```
+frontend/assets/icons/
+├── icon-master.svg              # Master vectoriel (512×512)
+├── favicon.svg                  # Favicon principal
+├── icon-16.svg                  # 16×16px
+├── icon-32.svg                  # 32×32px
+├── icon-48.svg                  # 48×48px
+├── icon-64.svg                  # 64×64px
+├── apple-touch-icon.svg         # 180×180px (iOS)
+├── icon-192.svg                 # 192×192px (PWA)
+├── icon-512.svg                 # 512×512px (PWA)
+├── icon-192-maskable.svg        # 192×192px (PWA maskable)
+├── icon-512-maskable.svg        # 512×512px (PWA maskable)
+├── safari-pinned-tab.svg        # Monochrome (Safari)
+└── ICON_PROMPT.md               # Instructions de régénération
+```
+
+#### Références dans `frontend/index.html`
+```html
+<!-- Favicon & Icons -->
+<link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg" />
+<link rel="icon" type="image/svg+xml" sizes="16x16" href="assets/icons/icon-16.svg" />
+<link rel="icon" type="image/svg+xml" sizes="32x32" href="assets/icons/icon-32.svg" />
+<link rel="icon" type="image/svg+xml" sizes="48x48" href="assets/icons/icon-48.svg" />
+<link rel="icon" type="image/svg+xml" sizes="64x64" href="assets/icons/icon-64.svg" />
+
+<!-- Apple Touch Icon -->
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.svg" />
+
+<!-- Safari Pinned Tab -->
+<link rel="mask-icon" href="assets/icons/safari-pinned-tab.svg" color="#1A73E8" />
+
+<!-- Web App Manifest -->
+<link rel="manifest" href="manifest.json" />
+
+<!-- Theme Colors -->
+<meta name="theme-color" content="#1A73E8" />
+<meta name="msapplication-TileColor" content="#1A73E8" />
+```
+
+#### Configuration du manifest.json
+- **name** : "Scan2Sheet - Scanner de Tickets vers Google Sheets"
+- **short_name** : "Scan2Sheet"
+- **theme_color** : `#1A73E8`
+- **background_color** : `#FFFFFF`
+- **display** : "standalone"
+- **scope** : "/"
+- **start_url** : "/"
+
+#### Régénération des icônes
+```bash
+# Générer tous les formats depuis le master SVG
+./scripts/generate-favicons-node.js
+
+# Ou utiliser ImageMagick (si disponible)
+./scripts/generate-favicons.sh
+```
+
+#### Cache et Performance
+- **Icônes** : Cache 1 an (`max-age=31536000, immutable`)
+- **Manifest** : Cache 24h (`max-age=86400`)
+- **Versioning** : Utiliser `?v=1` ou noms de fichiers hashés pour les mises à jour
 
 ## 🏗️ Architecture
 
-### Vue d'ensemble
-L'application suit une architecture moderne avec séparation claire des responsabilités :
+### Frontend (SPA)
+- **Localisation** : `frontend/`
+- **Technologies** : HTML5, CSS3, JavaScript (Vanilla)
+- **Frameworks** : Bootstrap 5.3.3
+- **Point d'entrée** : `frontend/index.html`
+- **Assets** : `frontend/assets/` (CSS, JS, images)
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Frontend      │    │   Backend       │    │   Infrastructure │
-│   (SPA)         │    │   (API)         │    │   (Docker)       │
-├─────────────────┤    ├─────────────────┤    ├─────────────────┤
-│ • HTML5/CSS/JS  │◄──►│ • PHP 8.2       │    │ • Docker        │
-│ • Bootstrap 5   │    │ • Apache        │    │ • Cloud Run     │
-│ • Google OAuth  │    │ • Document AI   │    │ • CI/CD         │
-│ • PWA Ready     │    │ • Sheets API    │    │ • Monitoring    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
+### Backend (API)
+- **Localisation** : `backend/`
+- **Technologies** : PHP 8.1, Apache
+- **Point d'entrée** : `backend/index.php`
+- **Logique métier** : `backend/app.php`
+- **Initialisation** : `backend/bootstrap.php`
 
-### Composants principaux
+### Infrastructure
+- **Localisation** : `infra/`
+- **Docker Compose** : `infra/docker-compose.yml`
+- **Variables d'environnement** : `infra/.env`
 
-#### Frontend (SPA)
-- **HTML5** : Interface responsive avec Bootstrap 5
-- **JavaScript ES6+** : Application côté client moderne
-- **Google Identity** : Authentification OAuth2
-- **PWA Ready** : Optimisé pour mobile
-
-#### Backend (API)
-- **PHP 8.2** : API REST moderne
-- **Google Document AI** : Reconnaissance de texte et extraction de données
-- **Google Sheets API** : Intégration avec les feuilles de calcul
-- **Apache** : Serveur web avec routing intelligent
-
-#### Infrastructure
-- **Docker** : Containerisation pour développement et production
-- **Cloud Run** : Déploiement serverless sur Google Cloud
-- **Single Container** : Frontend et backend dans un seul container
-
-## 🛠️ Installation et Configuration
+## 🛠️ Installation et Développement Local
 
 ### Prérequis
-- Docker & Docker Compose
+- Docker et Docker Compose
+- Git
 - Compte Google Cloud avec APIs activées
-- Service Account avec permissions appropriées
 
-### Configuration locale
+### Configuration Initiale
 
-1. **Cloner le projet**
-```bash
-git clone <repository-url>
-cd receipt-api-local-google-parser
-```
+1. **Cloner le repository**
+   ```bash
+   git clone <repository-url>
+   cd receipt-api-local-google-parser
+   ```
 
-2. **Configurer les variables d'environnement**
-```bash
-cp .env.example .env
-# Éditer .env avec vos valeurs
-```
+2. **Configurer les credentials Google Cloud**
+   ```bash
+   # Créer le dossier pour les credentials
+   mkdir -p backend/keys
+   
+   # Placer votre fichier de service account
+   cp path/to/your/sa-key.json backend/keys/sa-key.json
+   ```
 
-3. **Configurer les clés Google**
-```bash
-# Placer votre service-account.json dans backend/keys/
-mkdir -p backend/keys
-cp your-service-account.json backend/keys/service-account.json
-chmod 600 backend/keys/service-account.json
-```
+3. **Configurer les variables d'environnement**
+   ```bash
+   # Copier le template
+   cp .env.example .env
+   
+   # Éditer les variables
+   nano .env
+   ```
 
-4. **Démarrer l'application**
-```bash
-make up
-```
-
-5. **Accéder à l'application**
-```
-http://localhost:8080
-```
-
-### Variables d'environnement
+### Variables d'Environnement
 
 | Variable | Description | Exemple |
 |----------|-------------|---------|
-| `GOOGLE_OAUTH_CLIENT_ID` | ID client OAuth Google | `123456789.apps.googleusercontent.com` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Chemin vers le fichier de credentials | `/var/www/html/api/keys/sa-key.json` |
+| `GOOGLE_OAUTH_CLIENT_ID` | Client ID OAuth Google | `123456789.apps.googleusercontent.com` |
 | `SPREADSHEET_ID` | ID de la feuille Google Sheets | `1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms` |
-| `DEFAULT_SHEET` | Nom de la feuille par défaut | `Feuille 1` |
 | `GCP_PROJECT_ID` | ID du projet Google Cloud | `my-project-123` |
-| `GCP_LOCATION` | Région Google Cloud | `eu` |
 | `GCP_PROCESSOR_ID` | ID du processeur Document AI | `1234567890` |
-| `ALLOWED_EMAILS` | Emails autorisés (séparés par virgules) | `user1@example.com,user2@example.com` |
-| `ALLOWED_ORIGINS` | Origines CORS autorisées | `http://localhost:8080` |
-| `WHO_COLUMNS` | Configuration des colonnes utilisateurs | `{"Sabrina":["K","L","M"],"Mickael":["O","P","Q"]}` |
-| `MAX_BATCH_UPLOADS` | Nombre max de tickets par batch | `10` |
-| `DEBUG` | Mode debug (0/1) | `0` |
+| `DEBUG` | Mode debug (0/1) | `1` |
 
-### APIs Google requises
-- Google Document AI API
-- Google Sheets API
-- Google Identity API
-
-## 🚀 Déploiement
-
-### Cloud Run (Production)
-
-1. **Build et déploiement automatique**
-```bash
-# Via Cloud Build (recommandé)
-gcloud builds submit --config cloudbuild.yaml
-
-# Ou manuellement
-gcloud run deploy receipt-parser \
-  --source . \
-  --platform managed \
-  --region europe-west9 \
-  --allow-unauthenticated
-```
-
-2. **Configuration des secrets**
-```bash
-# Migrer les variables vers Secret Manager
-gcloud secrets create receipt-config --data-file=.env
-```
-
-### Variables d'environnement Cloud Run
-- `GOOGLE_OAUTH_CLIENT_ID`
-- `SPREADSHEET_ID`
-- `GCP_PROJECT_ID`
-- `GCP_PROCESSOR_ID`
-- `ALLOWED_EMAILS`
-- `WHO_COLUMNS`
-
-## 🧪 Développement
-
-### Commandes utiles
+### Démarrage Local
 
 ```bash
 # Démarrer l'application
 make up
 
+# Vérifier le statut
+make status
+
 # Voir les logs
 make logs
 
-# Redémarrer
-make restart
-
-# Shell dans le container
-make sh-app
-
-# Installer les dépendances
-make install
+# Arrêter l'application
+make down
 ```
 
-### Qualité de code
+### Scripts Disponibles
+
+#### Développement Local (Makefile)
+```bash
+# Gestion des containers
+make up          # Démarrer l'application
+make down        # Arrêter l'application
+make restart     # Redémarrer l'application
+make ps          # Vérifier le statut des containers
+make logs        # Voir les logs
+
+# Développement
+make install     # Installer les dépendances Composer
+make sh-app      # Shell dans le container
+make lint        # Linter le code (JS + PHP)
+make format      # Formater le code
+```
+
+#### Tests et Validation
+```bash
+# Tests complets
+./scripts/test-all.sh
+
+# Tests spécifiques
+./scripts/test-health.sh
+./scripts/test-credential-*.sh
+./scripts/check-gcp-readiness.sh
+```
+
+#### Production
+En production, le Makefile n'est **PAS utilisé**. Le déploiement se fait via :
+- **GitHub Actions** : CI/CD automatique
+- **Cloud Run** : Déploiement serverless
+- **Secret Manager** : Gestion des credentials
+
+## 🚀 Déploiement Production (Google Cloud Platform)
+
+### Prérequis GCP
+- Compte Google Cloud avec facturation activée
+- APIs activées : Cloud Run, Secret Manager, Document AI, Sheets API
+- Service Account avec permissions appropriées
+
+### Configuration des Secrets
+
+1. **Créer un Service Account**
+   ```bash
+   gcloud iam service-accounts create receipt-api-sa \
+     --display-name="Receipt API Service Account"
+   ```
+
+2. **Attribuer les rôles IAM**
+   ```bash
+   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+     --member="serviceAccount:receipt-api-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+     --role="roles/documentai.apiUser"
+   
+   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+     --member="serviceAccount:receipt-api-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+     --role="roles/sheets.editor"
+   ```
+
+3. **Créer le secret dans Secret Manager**
+   ```bash
+   gcloud secrets create sa-key \
+     --data-file=backend/keys/sa-key.json
+   ```
+
+### Configuration GitHub
+
+Dans votre repository GitHub, ajoutez ces secrets :
+- `GCP_SA_KEY` : Contenu du fichier sa-key.json
+- `GCP_PROJECT_ID` : ID de votre projet GCP
+- `GOOGLE_OAUTH_CLIENT_ID` : Client ID OAuth
+- `SPREADSHEET_ID` : ID de la feuille Sheets
+- `GCP_PROCESSOR_ID` : ID du processeur Document AI
+
+### Déploiement Automatique
+
+Le déploiement se fait automatiquement via GitHub Actions :
 
 ```bash
-# Vérifier la qualité (détection debug + données sensibles)
-make check-quality
-
-# Linter le code (ESLint + PHP CodeSniffer)
-make lint
-
-# Formater le code automatiquement
-make format
-
-# Tests de fumée (vérification complète)
-./scripts/smoke-tests.sh
-
-# Vérifier la séparation frontend/backend
-./scripts/check-frontend-backend-separation.sh
-
-# Tests de conformité CSP
-./scripts/test-csp-compliance.sh
-
-# Vérifier les violations CSP
-./scripts/check-csp-violations.sh
-
-# Test spécifique Google login avec CSP
-./scripts/test-google-login-csp.sh
-
-# Validation CSP pour CI
-./scripts/ci-csp-validation.sh
+# Pousser le code sur main
+git add .
+git commit -m "feat: ready for production"
+git push origin main
 ```
 
-**Outils inclus dans le container :**
-- **ESLint** : Linting JavaScript avec configuration moderne
-- **PHP CodeSniffer** : Linting PHP selon PSR-12
-- **Script de vérification** : Détection des `console.log` et données sensibles
+### Vérification du Déploiement
 
-### Architecture du projet
+```bash
+# Vérifier le service
+gcloud run services list --region=europe-west1
 
-L'application suit une architecture moderne avec séparation claire des responsabilités :
+# Tester l'application
+curl https://your-service-url/api/health
+curl https://your-service-url/api/ready
+```
 
+## 🧪 Tests et Validation
+
+### Tests Locaux
+
+```bash
+# Tests complets
+./scripts/test-all.sh
+
+# Tests de santé
+./scripts/test-health.sh
+
+# Tests de sécurité
+./scripts/check-gcp-security.sh
+
+# Tests de préparation GCP
+./scripts/check-gcp-readiness.sh
+```
+
+### Tests de Production
+
+```bash
+# Tests des endpoints
+curl https://your-service-url/api/health
+curl https://your-service-url/api/ready
+curl https://your-service-url/api/config
+
+# Tests d'authentification
+curl https://your-service-url/api/auth/me
+```
+
+## 📊 Monitoring et Logs
+
+### Logs Locaux
+```bash
+# Voir tous les logs
+make logs
+
+# Logs du backend uniquement
+docker logs receipt-api-local-google-parser-backend-1
+
+# Logs en temps réel
+docker logs -f receipt-api-local-google-parser-backend-1
+```
+
+### Logs Production
+```bash
+# Logs du service Cloud Run
+gcloud logging read "resource.type=cloud_run_revision" --limit=50
+
+# Logs d'erreur
+gcloud logging read "severity>=ERROR" --limit=20
+```
+
+### Métriques
+```bash
+# Métriques de performance
+gcloud monitoring metrics list --filter="resource.type=cloud_run_revision"
+
+# Utilisation des ressources
+gcloud run services describe receipt-api --region=europe-west1
+```
+
+## 🔧 Configuration Avancée
+
+### Content Security Policy (CSP)
+La CSP est configurée pour permettre :
+- Images blob (prévisualisation locale)
+- Images data (base64)
+- Images HTTPS (Google Sheets)
+- Scripts Google OAuth
+
+### Headers de Sécurité
+- HSTS (HTTP Strict Transport Security)
+- X-Frame-Options: DENY
+- X-Content-Type-Options: nosniff
+- Referrer-Policy: strict-origin-when-cross-origin
+
+### Gestion des Credentials
+- **Local** : Fichier `backend/keys/sa-key.json`
+- **Production** : Google Secret Manager
+- **Rotation** : Automatique via Secret Manager
+
+## 🛠️ Outils et Technologies
+
+### Backend
+- **PHP 8.1** : Langage principal
+- **Apache** : Serveur web
+- **Composer** : Gestion des dépendances
+- **Google Cloud Client Library** : Intégration GCP
+
+### Frontend
+- **HTML5/CSS3/JavaScript** : Technologies de base
+- **Bootstrap 5.3.3** : Framework CSS
+- **Google Identity** : Authentification OAuth
+
+### Infrastructure
+- **Docker** : Containerisation
+- **Docker Compose** : Orchestration locale
+- **Google Cloud Run** : Déploiement production
+- **GitHub Actions** : CI/CD
+
+### Outils de Développement
+- **Makefile** : Scripts d'automatisation
+- **PHPCS** : Analyse de code PHP
+- **Git** : Contrôle de version
+
+## 🚨 Troubleshooting
+
+### Problèmes Courants
+
+#### Application ne démarre pas
+```bash
+# Vérifier les logs
+make logs
+
+# Vérifier les containers
+docker ps -a
+
+# Redémarrer
+make restart
+```
+
+#### Erreurs de credentials
+```bash
+# Vérifier le fichier de credentials
+ls -la backend/keys/sa-key.json
+
+# Tester les credentials
+./scripts/check-credentials.sh
+```
+
+#### Erreurs de CSP (images blob)
+```bash
+# Vérifier la CSP
+curl -I http://localhost:8080 | grep -i "content-security-policy"
+
+# Tester les images blob
+./scripts/test-csp-blob-images.sh
+```
+
+#### Erreurs d'API
+```bash
+# Tester les endpoints
+curl http://localhost:8080/api/health
+curl http://localhost:8080/api/ready
+
+# Vérifier les logs
+make logs
+```
+
+### Commandes de Diagnostic
+
+```bash
+# Vérifier la santé de l'application
+./scripts/test-health.sh
+
+# Vérifier la sécurité
+./scripts/check-gcp-security.sh
+
+# Vérifier la préparation GCP
+./scripts/check-gcp-readiness.sh
+
+# Tests complets
+./scripts/test-all.sh
+```
+
+## 📚 Documentation Technique
+
+### Structure du Projet
 ```
 receipt-api-local-google-parser/
-├── 📁 frontend/            # Interface utilisateur (SPA)
-│   ├── index.html          # Application web principale
-│   ├── assets/             # CSS, JS, images
-│   └── .htaccess           # Routage SPA + API
-├── 📁 backend/             # API PHP (API uniquement)
-│   ├── index.php           # Routeur API principal
-│   ├── app.php             # Déclarations de fonctions
-│   ├── bootstrap.php       # Initialisation + autoload
-│   ├── .htaccess           # Sécurité backend
-│   └── keys/               # Clés de service Google
-├── 📁 infra/               # Infrastructure
-│   ├── docker-compose.yml  # Configuration Docker
-│   ├── .env                # Variables d'environnement
-│   └── docker/php/         # Configuration PHP
-├── 📁 scripts/             # Scripts utilitaires
-│   ├── smoke-tests.sh      # Tests de fumée
-│   ├── test-csp-compliance.sh
-│   └── check-csp-violations.sh
-├── 📁 frontend/assets/libs/ # Assets locaux
-│   └── bootstrap/5.3.3/     # Bootstrap versionnée
-└── 📁 tests/               # Tests unitaires
+├── frontend/                 # Application SPA
+│   ├── index.html           # Point d'entrée
+│   ├── assets/              # CSS, JS, images
+│   └── .htaccess            # Configuration Apache
+├── backend/                 # API Backend
+│   ├── index.php            # Point d'entrée API
+│   ├── app.php              # Logique métier
+│   ├── bootstrap.php        # Initialisation
+│   ├── composer.json        # Dépendances PHP
+│   └── keys/                # Credentials (local)
+├── infra/                   # Infrastructure
+│   ├── docker-compose.yml   # Orchestration locale
+│   └── .env                 # Variables d'environnement
+├── scripts/                 # Scripts d'automatisation
+├── docs/                    # Documentation technique
+├── .github/workflows/       # CI/CD GitHub Actions
+├── Dockerfile               # Build production
+├── Makefile                 # Scripts de développement
+└── README.md                # Cette documentation
 ```
 
-**Séparation des responsabilités :**
-- **Frontend** : SPA servie à la racine `/` avec routage client-side
-- **Backend** : API accessible uniquement via `/api/*`
-- **Infrastructure** : Docker, CI/CD, configuration
+### Endpoints API
 
-## 🔒 Sécurité
+| Endpoint | Méthode | Description |
+|----------|---------|-------------|
+| `/api/health` | GET | Vérification de santé |
+| `/api/ready` | GET | Vérification de readiness |
+| `/api/config` | GET | Configuration de l'application |
+| `/api/auth/me` | GET | Informations utilisateur |
+| `/api/sheets` | GET | Liste des feuilles |
+| `/api/sheets/write` | POST | Écriture dans Sheets |
+| `/api/scan` | POST | Analyse d'un document |
+| `/api/scan/batch` | POST | Analyse en lot |
 
-### Headers de sécurité
-- **CSP** : Content Security Policy stricte (assets locaux uniquement)
-- **HSTS** : HTTP Strict Transport Security
-- **X-Frame-Options** : Protection contre le clickjacking
-- **X-Content-Type-Options** : Protection MIME sniffing
+### Politiques de Logging
 
-#### Politique CSP
-La CSP est configurée pour :
-- **Assets locaux uniquement** : Pas de CDN (Bootstrap, etc. servis localement)
-- **Google Identity** : Autorise `accounts.google.com`, `apis.google.com`, `*.gstatic.com` pour l'authentification
-- **APIs Google** : Autorise `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `accounts.googleapis.com`, `www.googleapis.com`
-- **Images** : Autorise `data:` et `https:` pour les images uploadées
-- **Frames** : Autorise `accounts.google.com`, `apis.google.com`, `content.googleapis.com` pour le modal de connexion
-
-#### Domaines Google requis
-- **frame-src** : `accounts.google.com`, `apis.google.com`, `content.googleapis.com`
-- **script-src** : `accounts.google.com`, `apis.google.com`, `*.gstatic.com`
-- **connect-src** : `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `accounts.googleapis.com`, `www.googleapis.com`
-
-#### Assets locaux
-- **Bootstrap 5.3.3** : Servi depuis `frontend/assets/libs/bootstrap/5.3.3/`
-- **Source maps** : Désactivées en production, locales en développement
-- **Versioning** : Versions épinglées pour la reproductibilité
-
-### Authentification
-- **OAuth2** : Authentification Google sécurisée
-- **Tokens en mémoire** : Pas de stockage persistant des tokens
-- **Session management** : Gestion automatique des sessions
-
-### Données sensibles
-- **Masquage automatique** : Tokens et emails masqués dans les logs
-- **Validation stricte** : Vérification des emails autorisés
-- **CORS configuré** : Politique CORS restrictive
-
-## 📊 Monitoring et Logging
-
-### Endpoints de santé
-- `GET /api/health` : Statut de l'application
-- `GET /api/ready` : Vérification de la disponibilité des services
-
-### Logging structuré
-- **Format JSON** : Logs structurés avec timestamps
-- **Niveaux de log** : info, warn, error
-- **Masquage des données** : Données sensibles automatiquement masquées
-- **Politique de logs** : En production, seuls les erreurs et warnings sont loggés
-
-### Exemple de log structuré
+#### Format des Logs
 ```json
 {
-  "timestamp": "2024-01-15T10:30:00Z",
-  "level": "info",
-  "message": "User authenticated",
+  "timestamp": "2025-01-06T10:30:00Z",
+  "level": "INFO|WARNING|ERROR",
+  "message": "Description de l'événement",
   "context": {
-    "user_id": "user123",
-    "method": "oauth",
-    "timestamp": 1705312200
+    "user_id": "user@example.com",
+    "request_id": "uuid",
+    "endpoint": "/api/scan"
   }
 }
 ```
 
-## 🐛 Dépannage
+#### Niveaux de Log
+- **ERROR** : Erreurs critiques nécessitant une intervention
+- **WARNING** : Problèmes non critiques mais à surveiller
+- **INFO** : Informations générales sur le fonctionnement
 
-### Problèmes courants
+#### Données Sensibles
+Les logs sont automatiquement nettoyés des données sensibles :
+- Tokens d'authentification
+- Clés privées
+- Emails utilisateurs
+- IDs de documents
 
-1. **Erreur 401 - Connexion non autorisée**
-   - Vérifier `GOOGLE_OAUTH_CLIENT_ID`
-   - Vérifier que l'email est dans `ALLOWED_EMAILS`
+## 🔄 Maintenance et Mises à Jour
 
-2. **Erreur 500 - Service indisponible**
-   - Vérifier les logs : `make logs`
-   - Vérifier la configuration DocAI
-
-3. **Assets non chargés**
-   - Vérifier la configuration Apache
-   - Vérifier les permissions des fichiers
-
-### Logs et debugging
-
+### Rotation des Secrets
 ```bash
-# Voir les logs en temps réel
-make logs
+# Créer une nouvelle clé
+gcloud iam service-accounts keys create new-sa-key.json \
+  --iam-account="receipt-api-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com"
 
-# Logs détaillés (mode debug)
-DEBUG=1 make restart
-make logs
+# Mettre à jour le secret
+gcloud secrets versions add sa-key --data-file=new-sa-key.json
+
+# Supprimer l'ancienne clé
+gcloud iam service-accounts keys delete OLD_KEY_ID \
+  --iam-account="receipt-api-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com"
 ```
 
-## 📋 Standards de Code
-
-### PHP (PSR-12)
-- **Indentation** : 4 espaces (pas de tabs)
-- **Longueur de ligne** : Limite douce 120 caractères, limite dure 140 caractères
-- **Nommage** : camelCase pour les variables, PascalCase pour les classes
-- **Accolades** : Accolades ouvrantes sur la même ligne, fermantes sur une nouvelle ligne
-
-### JavaScript (ESLint)
-- **Indentation** : 4 espaces
-- **Guillemets** : Guillemets simples
-- **Point-virgules** : Toujours requis
-- **Pas de console.log** : Le code de production ne doit pas contenir de statements de debug
-
-### Gestion des erreurs
-- **Production** : Messages d'erreur génériques
-- **Développement** : Messages d'erreur détaillés (DEBUG=1)
-- **Jamais exposer** : Chemins internes ou informations sensibles
-
-### Pratiques interdites
-- `console.log()`, `console.warn()`, `console.error()`
-- `var_dump()`, `print_r()`, `var_export()`
-- Opérateur `@` pour la suppression d'erreurs
-- Échecs silencieux
-- Valeurs de retour ignorées
-
-## 📦 Gestion des Assets
-
-### Ajout d'une nouvelle bibliothèque
-1. **Créer le dossier** : `frontend/assets/libs/nom-lib/version/`
-2. **Télécharger les fichiers** : CSS, JS, et éventuellement les source maps
-3. **Mettre à jour HTML** : Remplacer les références CDN par les assets locaux
-4. **Vérifier la CSP** : S'assurer que la CSP reste stricte
-5. **Tester** : `./scripts/check-csp-violations.sh`
-
-### Politique des versions
-- **Épinglage strict** : Chaque lib a sa version fixée
-- **Documentation** : README.md dans chaque dossier de lib
-- **Source maps** : Locales uniquement, jamais de CDN
-
-### Exemple : Ajouter une nouvelle lib
+### Mise à Jour de l'Application
 ```bash
-# 1. Créer le dossier
-mkdir -p frontend/assets/libs/mon-lib/1.0.0/
-
-# 2. Télécharger les assets
-curl -L -o frontend/assets/libs/mon-lib/1.0.0/mon-lib.min.css "https://example.com/mon-lib.min.css"
-curl -L -o frontend/assets/libs/mon-lib/1.0.0/mon-lib.min.js "https://example.com/mon-lib.min.js"
-
-# 3. Mettre à jour HTML
-# Remplacer <link href="https://cdn.example.com/mon-lib.min.css" rel="stylesheet">
-# Par <link href="assets/libs/mon-lib/1.0.0/mon-lib.min.css" rel="stylesheet">
-
-# 4. Vérifier
-./scripts/check-csp-violations.sh
+# Déploiement automatique via GitHub Actions
+git add .
+git commit -m "feat: update application"
+git push origin main
 ```
 
-## 🤝 Contribution
+### Monitoring des Performances
+```bash
+# Métriques Cloud Run
+gcloud monitoring metrics list --filter="resource.type=cloud_run_revision"
 
-### Workflow
-1. Fork du projet
-2. Créer une branche feature
-3. Développer avec les standards
-4. Tester avec `make check-quality`
-5. Créer une Pull Request
+# Logs de performance
+gcloud logging read "severity>=WARNING" --limit=100
+```
 
-### Checklist de contribution
-- [ ] Code linter sans erreurs
-- [ ] Aucun statement de debug
-- [ ] Documentation à jour
-- [ ] Tests passent
-- [ ] Sécurité vérifiée
-- [ ] Assets locaux (pas de CDN)
-- [ ] CSP conforme
+## 📞 Support et Ressources
 
-## 📄 Licence
+### Documentation Officielle
+- [Google Cloud Run](https://cloud.google.com/run/docs)
+- [Document AI](https://cloud.google.com/document-ai/docs)
+- [Google Sheets API](https://developers.google.com/sheets/api)
+- [Secret Manager](https://cloud.google.com/secret-manager/docs)
 
-Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
+### Guides de Sécurité
+- [IAM Best Practices](https://cloud.google.com/iam/docs/using-iam-securely)
+- [Secret Manager Best Practices](https://cloud.google.com/secret-manager/docs/best-practices)
+- [Cloud Run Security](https://cloud.google.com/run/docs/securing)
 
-## 🆘 Support
-
-Pour toute question ou problème :
-1. Consulter la documentation
-2. Vérifier les issues existantes
-3. Créer une nouvelle issue avec les détails
+### Scripts Utiles
+- `./scripts/test-all.sh` : Tests complets
+- `./scripts/check-gcp-readiness.sh` : Vérification pré-déploiement
+- `./scripts/check-gcp-security.sh` : Vérification sécurité
+- `./scripts/test-health.sh` : Tests de santé
 
 ---
 
-**Développé avec ❤️ pour simplifier la gestion des tickets de caisse**
+🎉 **Receipt API** est maintenant prêt à scanner et analyser vos reçus avec l'intelligence artificielle de Google Cloud !

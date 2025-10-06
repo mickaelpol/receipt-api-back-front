@@ -36,6 +36,10 @@ backend/keys/*.json
 *.json
 !package.json
 !composer.json
+keys/
+credentials/
+*.key
+*.pem
 
 # Docker
 .dockerignore
@@ -54,3 +58,6 @@ test.md
 # Backup files
 *.bak
 *.backup
+
+# Scripts file
+scripts/
