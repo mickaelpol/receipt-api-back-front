@@ -91,6 +91,162 @@ frontend/assets/icons/
 - **Manifest** : Cache 24h (`max-age=86400`)
 - **Versioning** : Utiliser `?v=1` ou noms de fichiers hashés pour les mises à jour
 
+## 🚀 Pipeline de Déploiement Cloud Build → Cloud Run
+
+### Vue d'ensemble
+Scan2Sheet utilise un pipeline de déploiement automatisé basé sur Google Cloud Build et Cloud Run pour assurer des déploiements fiables et sécurisés.
+
+### Architecture du Pipeline
+```
+GitHub Push → Cloud Build Trigger → Build Image → Push to Artifact Registry → Deploy to Cloud Run → Smoke Tests → Notification
+```
+
+### Configuration GCP
+- **Projet** : `264113083582`
+- **Région** : `europe-west9` (Paris)
+- **Service Cloud Run** : `receipt-parser`
+- **Artifact Registry** : `receipt-api` (EU-West)
+- **Min Instances** : 1 (pour éviter le cold start)
+- **Concurrency** : 1 (optimisé pour l'usage)
+
+### Triggers Automatiques
+- **Staging** : Branche `staging` → Déploiement automatique
+- **Production** : Branche `main` → Déploiement après validation manuelle
+
+### Étapes du Pipeline
+
+#### 1. Pre-build Quality Gates
+- Validation de la structure des fichiers
+- Vérification de l'existence du Dockerfile
+- Contrôles de syntaxe de base
+
+#### 2. Build et Push de l'Image
+- Build Docker depuis la racine du projet
+- Tag avec `$SHORT_SHA` et `latest`
+- Push vers Artifact Registry (EU-West)
+- Timeout : 10 minutes
+
+#### 3. Déploiement Cloud Run
+- Déploiement avec configuration optimisée
+- Variables d'environnement depuis Secret Manager
+- Configuration de ressources (512Mi RAM, 1 CPU)
+- Port 8080 exposé
+
+#### 4. Tests de Smoke
+- Vérification des endpoints principaux
+- Tests de performance
+- Validation du branding Scan2Sheet
+- Retry automatique (3 tentatives)
+
+#### 5. Notifications
+- Email de succès/échec
+- Logs vers Cloud Logging
+- Résumé des actions à effectuer
+
+### Configuration des Secrets
+Les secrets sont gérés via Google Secret Manager :
+
+```bash
+# Secrets requis
+sa-key                 # Clé JSON du service account
+oauth-client-id        # ID client OAuth Google
+spreadsheet-id         # ID du Google Sheet
+gcp-project-id         # ID du projet GCP
+gcp-processor-id       # ID du processeur Document AI
+debug-mode             # Mode debug (true/false)
+```
+
+### Permissions IAM (Least Privilege)
+
+#### Service Account Cloud Build
+- `roles/artifactregistry.writer` - Push d'images
+- `roles/run.admin` - Déploiement Cloud Run
+- `roles/secretmanager.secretAccessor` - Accès aux secrets
+- `roles/logging.logWriter` - Écriture de logs
+- `roles/iam.serviceAccountUser` - Utilisation du service account
+
+#### Service Account Application
+- `roles/documentai.apiUser` - Document AI
+- `roles/sheets.editor` - Google Sheets
+- `roles/run.invoker` - Appels Cloud Run
+
+### Commandes de Déploiement
+
+#### Configuration Initiale
+```bash
+# 1. Configuration des ressources GCP
+./scripts/setup-gcp-resources.sh
+
+# 2. Configuration des triggers Cloud Build
+./scripts/setup-cloud-build-triggers.sh
+```
+
+#### Déploiement Manuel
+```bash
+# Staging
+gcloud builds triggers run scan2sheet-staging-deploy --branch=staging
+
+# Production
+gcloud builds triggers run scan2sheet-production-deploy --branch=main
+```
+
+#### Tests et Validation
+```bash
+# Tests de smoke locaux
+./scripts/smoke-tests.sh http://localhost:8080
+
+# Tests sur un environnement déployé
+./scripts/smoke-tests.sh https://your-service-url.run.app
+```
+
+#### Rollback
+```bash
+# Rollback vers la révision précédente
+./scripts/rollback-deployment.sh staging
+./scripts/rollback-deployment.sh production
+```
+
+### Monitoring et Logs
+- **Cloud Run Console** : https://console.cloud.google.com/run/detail/europe-west9/receipt-parser?project=264113083582
+- **Build Logs** : https://console.cloud.google.com/cloud-build/builds?project=264113083582
+- **Logs Application** : Cloud Logging avec filtres par service
+
+### Coûts et Optimisations
+- **Min Instances = 1** : Évite le cold start mais coûte ~5€/mois
+- **Concurrency = 1** : Optimisé pour les tâches de traitement de documents
+- **Memory = 512Mi** : Suffisant pour l'application PHP/Apache
+- **CPU = 1** : Équilibré entre performance et coût
+
+### Sécurité
+- **Ingress** : Public (all traffic) - Service web accessible
+- **VPC** : Pas de VPC connector nécessaire pour l'usage actuel
+- **Secrets** : Gérés via Secret Manager, jamais dans le code
+- **HTTPS** : Forcé par Cloud Run
+- **CSP** : Content Security Policy configurée
+
+### Troubleshooting
+
+#### Build Fails
+1. Vérifier les logs Cloud Build
+2. Valider la configuration des secrets
+3. Tester le build localement : `docker build -t test .`
+
+#### Deploy Fails
+1. Vérifier les permissions IAM
+2. Valider la configuration Cloud Run
+3. Contrôler les quotas et limites
+
+#### Smoke Tests Fail
+1. Vérifier la disponibilité du service
+2. Contrôler les endpoints API
+3. Valider la configuration des secrets
+
+### Documentation Technique
+- **cloudbuild.yaml** : Configuration principale du pipeline
+- **scripts/setup-*.sh** : Scripts de configuration
+- **scripts/smoke-tests.sh** : Tests automatisés
+- **scripts/rollback-*.sh** : Gestion des rollbacks
+
 ## 🏗️ Architecture
 
 ### Frontend (SPA)

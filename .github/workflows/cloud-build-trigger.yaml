@@ -1,0 +1,59 @@
+# GitHub Actions Workflow to trigger Cloud Build
+# This workflow triggers Cloud Build when code is pushed to specific branches
+
+name: Trigger Cloud Build
+
+on:
+  push:
+    branches:
+      - staging
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+env:
+  PROJECT_ID: '264113083582'
+  REGION: 'europe-west9'
+  SERVICE_NAME: 'receipt-parser'
+
+jobs:
+  trigger-staging:
+    if: github.ref == 'refs/heads/staging' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Trigger Cloud Build (Staging)
+        run: |
+          echo "🚀 Triggering Cloud Build for staging environment..."
+          
+          gcloud builds submit \
+            --config cloudbuild.yaml \
+            --substitutions _ENV=staging,_REGION=${{ env.REGION }},_SERVICE_NAME=${{ env.SERVICE_NAME }} \
+            --project ${{ env.PROJECT_ID }}
+
+  trigger-production:
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    runs-on: ubuntu-latest
+    environment: production  # Requires manual approval
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Trigger Cloud Build (Production)
+        run: |
+          echo "🚀 Triggering Cloud Build for production environment..."
+          
+          gcloud builds submit \
+            --config cloudbuild.yaml \
+            --substitutions _ENV=prod,_REGION=${{ env.REGION }},_SERVICE_NAME=${{ env.SERVICE_NAME }} \
+            --project ${{ env.PROJECT_ID }}
