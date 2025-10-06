@@ -85,7 +85,7 @@ steps:
       - '--port'
       - '8080'
       - '--set-env-vars'
-      - 'ENV=${_ENV},PORT=8080'
+      - 'ENV=${_ENV}'
       - '--set-secrets'
       - 'GOOGLE_APPLICATION_CREDENTIALS=sa-key:latest,GOOGLE_OAUTH_CLIENT_ID=oauth-client-id:latest,SPREADSHEET_ID=spreadsheet-id:latest,GCP_PROJECT_ID=gcp-project-id:latest,GCP_PROCESSOR_ID=gcp-processor-id:latest,DEBUG=debug-mode:latest'
       - '--revision-suffix'
