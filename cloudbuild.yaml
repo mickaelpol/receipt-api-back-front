@@ -156,7 +156,7 @@ steps:
         Image: ${_REGION}-docker.pkg.dev/$PROJECT_ID/receipt-api/receipt-parser:$SHORT_SHA
         Service URL: $$SERVICE_URL
         
-        Build Log: $BUILD_LOGS_BUCKET/$BUILD_ID
+        Build Log: https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=$PROJECT_ID
         
         Next Steps:
         - Verify application functionality

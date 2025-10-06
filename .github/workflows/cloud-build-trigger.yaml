@@ -1,7 +1,7 @@
-# GitHub Actions Workflow to trigger Cloud Build
-# This workflow triggers Cloud Build when code is pushed to specific branches
+# GitHub Actions Workflow - Info only
+# Le déploiement se fait via Cloud Build triggers configurés sur GCP
 
-name: Trigger Cloud Build
+name: Cloud Build Info
 
 on:
   push:
@@ -9,15 +9,6 @@ on:
       - staging
       - main
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-        - staging
-        - production
 
 env:
   PROJECT_ID: '264113083582'
@@ -25,35 +16,20 @@ env:
   SERVICE_NAME: 'receipt-parser'
 
 jobs:
-  trigger-staging:
-    if: github.ref == 'refs/heads/staging' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+  info:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Trigger Cloud Build (Staging)
+      - name: Info message
         run: |
-          echo "🚀 Triggering Cloud Build for staging environment..."
-          
-          gcloud builds submit \
-            --config cloudbuild.yaml \
-            --substitutions _ENV=staging,_REGION=${{ env.REGION }},_SERVICE_NAME=${{ env.SERVICE_NAME }} \
-            --project ${{ env.PROJECT_ID }}
-
-  trigger-production:
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
-    runs-on: ubuntu-latest
-    environment: production  # Requires manual approval
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Trigger Cloud Build (Production)
-        run: |
-          echo "🚀 Triggering Cloud Build for production environment..."
-          
-          gcloud builds submit \
-            --config cloudbuild.yaml \
-            --substitutions _ENV=prod,_REGION=${{ env.REGION }},_SERVICE_NAME=${{ env.SERVICE_NAME }} \
-            --project ${{ env.PROJECT_ID }}
+          echo "ℹ️ Le déploiement se fait automatiquement via Cloud Build triggers configurés sur GCP."
+          echo "📋 Configuration:"
+          echo "   - Projet: ${{ env.PROJECT_ID }}"
+          echo "   - Région: ${{ env.REGION }}"
+          echo "   - Service: ${{ env.SERVICE_NAME }}"
+          echo "   - Branche: ${{ github.ref_name }}"
+          echo ""
+          echo "🔗 Vérifiez le statut du build sur:"
+          echo "   https://console.cloud.google.com/cloud-build/builds?project=${{ env.PROJECT_ID }}"

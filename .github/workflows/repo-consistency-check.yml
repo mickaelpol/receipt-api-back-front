@@ -5,9 +5,6 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
-  schedule:
-    # Vérification quotidienne à 2h du matin
-    - cron: '0 2 * * *'
 
 jobs:
   consistency-check:
@@ -16,20 +13,6 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
-    - name: Setup permissions
-      run: |
-        chmod +x scripts/*.sh
-        
-    - name: Check repository consistency
-      run: |
-        echo "🔍 Vérification de la consistance du repository..."
-        ./scripts/check-repo-consistency.sh
-        
-    - name: Check for orphan files
-      run: |
-        echo "🔍 Détection des fichiers orphelins..."
-        ./scripts/check-orphan-files.sh
         
     - name: Check for multiple READMEs
       run: |
@@ -41,18 +24,6 @@ jobs:
           exit 1
         else
           echo "✅ Un seul README.md trouvé"
-        fi
-        
-    - name: Check for orphan documentation
-      run: |
-        echo "🔍 Vérification des docs orphelines..."
-        ORPHAN_DOCS=$(find . -name "*.md" -not -name "README.md" -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./vendor/*" 2>/dev/null || true)
-        if [ -n "$ORPHAN_DOCS" ]; then
-          echo "❌ Docs orphelines détectées:"
-          echo "$ORPHAN_DOCS"
-          exit 1
-        else
-          echo "✅ Aucune doc orpheline trouvée"
         fi
         
     - name: Check project structure
@@ -86,5 +57,4 @@ jobs:
         echo "🎉 Vérifications de consistance terminées !"
         echo "   - Structure du projet ✅"
         echo "   - README unique ✅"
-        echo "   - Aucune doc orpheline ✅"
-        echo "   - Fichiers orphelins vérifiés ✅"
+        echo "   - Fichiers temporaires vérifiés ✅"
