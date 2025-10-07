@@ -87,7 +87,7 @@ steps:
       - '--service-account'
       - 'docai-sa@scan-document-ai.iam.gserviceaccount.com'
       - '--set-env-vars'
-      - 'ENV=${_ENV},GCP_PROJECT_ID=264113083582,DEBUG=false,GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json'
+      - 'ENV=${_ENV},GCP_PROJECT_ID=264113083582,DEBUG=false,GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json,GOOGLE_OAUTH_CLIENT_ID=${_GOOGLE_OAUTH_CLIENT_ID},SPREADSHEET_ID=${_SPREADSHEET_ID},DEFAULT_SHEET=${_DEFAULT_SHEET},ALLOWED_EMAILS=${_ALLOWED_EMAILS},GCP_LOCATION=${_GCP_LOCATION},ALLOWED_ORIGINS=${_ALLOWED_ORIGINS},WHO_COLUMNS=${_WHO_COLUMNS},MAX_BATCH_UPLOADS=${_MAX_BATCH_UPLOADS}'
       - '--revision-suffix'
       - '${SHORT_SHA}'
     timeout: '600s'  # 10 minutes timeout
@@ -176,6 +176,14 @@ substitutions:
   _ENV: 'staging'
   _REGION: 'europe-west9'
   _SERVICE_NAME: 'receipt-parser'
+  _GOOGLE_OAUTH_CLIENT_ID: 'YOUR_GOOGLE_OAUTH_CLIENT_ID'
+  _SPREADSHEET_ID: 'YOUR_GOOGLE_SHEET_ID'
+  _DEFAULT_SHEET: 'Sheet1'
+  _ALLOWED_EMAILS: 'your-email@gmail.com'
+  _GCP_LOCATION: 'eu'
+  _ALLOWED_ORIGINS: 'https://receipt-parser-HASH.a.run.app'
+  _WHO_COLUMNS: '{"Qui":["Mickael","Marie","Autre"]}'
+  _MAX_BATCH_UPLOADS: '10'
 
 # Timeout for entire build
 timeout: '1200s'  # 20 minutes total timeout
