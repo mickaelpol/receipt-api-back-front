@@ -87,7 +87,7 @@ steps:
       - '--service-account'
       - 'docai-sa@scan-document-ai.iam.gserviceaccount.com'
       - '--set-env-vars'
-      - 'ENV=${_ENV},GCP_PROJECT_ID=264113083582,DEBUG=false,GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json,DEFAULT_SHEET=Sheet1,ALLOWED_EMAILS=your-email@gmail.com,GCP_LOCATION=eu,ALLOWED_ORIGINS=https://receipt-parser-HASH.a.run.app,WHO_COLUMNS={"Qui":["Mickael","Marie","Autre"]},MAX_BATCH_UPLOADS=10'
+      - 'ENV=${_ENV},GCP_PROJECT_ID=264113083582,DEBUG=false,GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json,DEFAULT_SHEET=Sheet1,ALLOWED_EMAILS=your-email@gmail.com,GCP_LOCATION=eu,ALLOWED_ORIGINS=https://receipt-parser-HASH.a.run.app,WHO_COLUMNS='{"Qui":["Mickael","Marie","Autre"]}',MAX_BATCH_UPLOADS=10'
       - '--set-secrets'
       - 'GOOGLE_OAUTH_CLIENT_ID=oauth-client-id:latest,SPREADSHEET_ID=spreadsheet-id:latest'
       - '--revision-suffix'
