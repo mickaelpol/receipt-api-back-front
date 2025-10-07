@@ -88,8 +88,8 @@ RUN echo "Header always set Content-Security-Policy \"default-src 'self'; script
 COPY infra/docker/start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh
 
-# Exposition du port
-EXPOSE 80
+# Exposition du port (Cloud Run utilise PORT=8080)
+EXPOSE 8080
 
 # Point d'entrée
 ENTRYPOINT ["/usr/local/bin/start.sh"]

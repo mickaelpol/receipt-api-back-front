@@ -26,6 +26,12 @@ chmod -R 777 /var/www/html/logs
 chmod -R 777 /var/www/html/tmp
 chmod -R 777 /var/www/html/cache
 
+# Configuration du port Apache (Cloud Run utilise PORT=8080)
+PORT=${PORT:-8080}
+echo "Configuration d'Apache pour écouter sur le port $PORT"
+sed -i "s/Listen 80/Listen $PORT/g" /etc/apache2/ports.conf
+sed -i "s/<VirtualHost \*:80>/<VirtualHost *:$PORT>/g" /etc/apache2/sites-available/000-default.conf
+
 # Vérification de la configuration Apache
 echo "Vérification de la configuration Apache..."
 apache2ctl configtest
