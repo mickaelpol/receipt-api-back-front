@@ -84,8 +84,12 @@ steps:
       - '1'
       - '--port'
       - '8080'
+      - '--service-account'
+      - 'docai-sa@scan-document-ai.iam.gserviceaccount.com'
       - '--set-env-vars'
-      - 'ENV=${_ENV},GCP_PROJECT_ID=264113083582,DEBUG=false,GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json'
+      - 'ENV=${_ENV}'
+      - '--set-secrets'
+      - 'GOOGLE_APPLICATION_CREDENTIALS=sa-key:latest,GOOGLE_OAUTH_CLIENT_ID=oauth-client-id:latest,SPREADSHEET_ID=spreadsheet-id:latest,GCP_PROJECT_ID=gcp-project-id:latest,GCP_PROCESSOR_ID=gcp-processor-id:latest,DEBUG=debug-mode:latest'
       - '--revision-suffix'
       - '${SHORT_SHA}'
     timeout: '600s'  # 10 minutes timeout
