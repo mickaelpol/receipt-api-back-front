@@ -87,9 +87,9 @@ steps:
       - '--service-account'
       - 'docai-sa@scan-document-ai.iam.gserviceaccount.com'
       - '--set-env-vars'
-      - 'ENV=${_ENV},GCP_PROJECT_ID=264113083582,DEBUG=false,GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json,DEFAULT_SHEET=Sheet1,ALLOWED_EMAILS=your-email@gmail.com,GCP_LOCATION=eu,ALLOWED_ORIGINS=https://receipt-parser-HASH.a.run.app,WHO_COLUMNS=Qui:Mickael_Marie_Autre,MAX_BATCH_UPLOADS=10'
+      - 'ENV=${_ENV},DEBUG=false,GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json,DEFAULT_SHEET=Sheet1,ALLOWED_EMAILS=your-email@gmail.com,GCP_LOCATION=eu,ALLOWED_ORIGINS=https://receipt-parser-HASH.a.run.app,WHO_COLUMNS=Qui:Mickael_Marie_Autre,MAX_BATCH_UPLOADS=10'
       - '--set-secrets'
-      - 'GOOGLE_OAUTH_CLIENT_ID=oauth-client-id:latest,SPREADSHEET_ID=spreadsheet-id:latest'
+      - 'GOOGLE_OAUTH_CLIENT_ID=oauth-client-id:latest,SPREADSHEET_ID=spreadsheet-id:latest,GCP_PROJECT_ID=gcp-project-id:latest'
       - '--revision-suffix'
       - '${SHORT_SHA}'
     timeout: '600s'  # 10 minutes timeout
