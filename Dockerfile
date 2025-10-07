@@ -2,11 +2,11 @@
 FROM php:8.1-apache
 
 # Variables d'environnement
-ENV APACHE_DOCUMENT_ROOT /var/www/html
-ENV PHP_MEMORY_LIMIT 256M
-ENV PHP_MAX_EXECUTION_TIME 30
-ENV PHP_UPLOAD_MAX_FILESIZE 10M
-ENV PHP_POST_MAX_SIZE 10M
+ENV APACHE_DOCUMENT_ROOT=/var/www/html
+ENV PHP_MEMORY_LIMIT=256M
+ENV PHP_MAX_EXECUTION_TIME=30
+ENV PHP_UPLOAD_MAX_FILESIZE=10M
+ENV PHP_POST_MAX_SIZE=10M
 
 # Installation des dépendances système
 RUN apt-get update && apt-get install -y \
@@ -19,16 +19,12 @@ RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     pkg-config \
     libssl-dev \
+    build-essential \
+    autoconf \
     && rm -rf /var/lib/apt/lists/*
 
-# Installation des extensions PHP (extensions de base uniquement)
-RUN docker-php-ext-install zip
-RUN docker-php-ext-install curl
-RUN docker-php-ext-install mbstring
-RUN docker-php-ext-install xml
-RUN docker-php-ext-install pdo
-RUN docker-php-ext-install pdo_mysql
-RUN docker-php-ext-install opcache
+# Installation des extensions PHP (regroupées pour éviter les erreurs)
+RUN docker-php-ext-install zip curl mbstring xml pdo pdo_mysql opcache
 
 # Configuration PHP pour la production
 RUN echo "opcache.enable=1" >> /usr/local/etc/php/conf.d/opcache.ini \
@@ -51,8 +47,8 @@ RUN echo "ServerTokens Prod" >> /etc/apache2/apache2.conf && \
 COPY backend/ /var/www/html/
 COPY frontend/ /var/www/html/frontend/
 
-# Copie du fichier de credentials pour le déploiement
-COPY backend/keys/sa-key.json /tmp/credentials.json
+# Création du fichier de credentials (sera remplacé par les vraies credentials en production)
+RUN echo '{"type": "service_account", "project_id": "placeholder"}' > /tmp/credentials.json
 
 # Installation de Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
