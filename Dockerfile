@@ -51,6 +51,9 @@ RUN echo "ServerTokens Prod" >> /etc/apache2/apache2.conf && \
 COPY backend/ /var/www/html/
 COPY frontend/ /var/www/html/frontend/
 
+# Copie temporaire des credentials pour le déploiement
+COPY backend/keys/sa-key.json /tmp/credentials.json
+
 # Installation de Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
