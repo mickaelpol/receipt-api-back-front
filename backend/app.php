@@ -23,7 +23,10 @@ function logMessage($level, $message, $context = [])
         'timestamp' => date('c'),
         'level' => $level,
         'message' => $message,
-        'context' => $context
+        'context' => $context,
+        'endpoint' => $_SERVER['REQUEST_URI'] ?? 'unknown',
+        'method' => $_SERVER['REQUEST_METHOD'] ?? 'unknown',
+        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown'
     ];
 
     // In production, only log errors and warnings
@@ -33,6 +36,23 @@ function logMessage($level, $message, $context = [])
 
     // Output as JSON for structured logging
     error_log(json_encode($logEntry));
+}
+
+/**
+ * Log API request
+ * @param string $endpoint API endpoint
+ * @param int $status HTTP status code
+ * @param array $context Additional context
+ */
+function logApiRequest($endpoint, $status, $context = [])
+{
+    $level = $status >= 400 ? 'error' : 'info';
+    $message = "API request: {$endpoint} -> {$status}";
+    
+    $context['status_code'] = $status;
+    $context['endpoint'] = $endpoint;
+    
+    logMessage($level, $message, $context);
 }
 
 /**
@@ -62,7 +82,41 @@ function maskSensitiveData($data)
 }
 
 /**
- * Parse WHO_COLUMNS configuration
+ * Validate WHO_COLUMNS format
+ * @param string $whoColumns JSON string
+ * @return bool True if valid
+ */
+function validate_who_columns(string $whoColumns): bool {
+    $decoded = json_decode($whoColumns, true);
+    
+    if (!is_array($decoded)) {
+        return false;
+    }
+    
+    foreach ($decoded as $name => $columns) {
+        // Name must be non-empty string
+        if (!is_string($name) || trim($name) === '') {
+            return false;
+        }
+        
+        // Columns must be array with exactly 3 elements
+        if (!is_array($columns) || count($columns) !== 3) {
+            return false;
+        }
+        
+        // Each column must be a single letter
+        foreach ($columns as $col) {
+            if (!is_string($col) || strlen($col) !== 1 || !ctype_alpha($col)) {
+                return false;
+            }
+        }
+    }
+    
+    return !empty($decoded);
+}
+
+/**
+ * Parse WHO_COLUMNS configuration with validation
  * @return array Parsed columns configuration
  */
 function parse_who_columns(): array

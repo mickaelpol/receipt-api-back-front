@@ -1,0 +1,40 @@
+RewriteEngine On
+
+# Bloquer l'accès direct au backend
+RewriteRule ^backend/ - [F,L]
+
+# API routes vers index.php
+RewriteRule ^api/(.*)$ index.php [QSA,L]
+RewriteRule ^api$ index.php [QSA,L]
+
+# Health endpoints
+RewriteRule ^health$ index.php [QSA,L]
+RewriteRule ^ready$ index.php [QSA,L]
+
+# Servir les fichiers statiques du frontend
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteCond %{REQUEST_URI} ^/frontend/
+RewriteRule ^frontend/(.*)$ frontend/$1 [L]
+
+# Servir les assets du frontend depuis la racine (pour les chemins /assets/*)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_URI} ^/assets/
+RewriteRule ^assets/(.*)$ frontend/assets/$1 [L]
+
+# Servir le manifest.json du frontend
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^manifest\.json$ frontend/manifest.json [L]
+
+# Frontend SPA - servir frontend/index.html pour la racine
+RewriteRule ^$ frontend/index.html [L]
+
+# Frontend SPA - servir frontend/index.html pour toutes les autres routes non-API
+RewriteCond %{REQUEST_URI} !^/api/
+RewriteCond %{REQUEST_URI} !^/health$
+RewriteCond %{REQUEST_URI} !^/ready$
+RewriteCond %{REQUEST_URI} !^/frontend/
+RewriteCond %{REQUEST_URI} !^/assets/
+RewriteCond %{REQUEST_URI} !^/manifest\.json$
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^.*$ frontend/index.html [L]

@@ -58,6 +58,3 @@ test.md
 # Backup files
 *.bak
 *.backup
-
-# Scripts file
-scripts/

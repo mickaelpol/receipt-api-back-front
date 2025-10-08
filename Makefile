@@ -6,11 +6,28 @@ PROJ    ?= receipt
 # Raccourci
 DC = $(COMPOSE) -f $(FILE) -p $(PROJ)
 
+# Configuration locale
+.PHONY: setup
+setup:
+	@echo "🔧 Configuration initiale..."
+	@if [ ! -f "infra/.env" ]; then \
+		cp infra/.env.example infra/.env; \
+		echo "✅ Fichier infra/.env créé depuis infra/.env.example"; \
+		echo "⚠️  Veuillez remplir les variables dans infra/.env"; \
+	else \
+		echo "✅ Fichier infra/.env existe déjà"; \
+	fi
+	@echo "📁 Créez le répertoire backend/keys/ et placez votre sa-key.json dedans"
+	@echo "🚀 Ensuite lancez: make up"
+
 # ====== Cibles ======
-.PHONY: help up down restart ps logs install sh-app lint check-quality format
+.PHONY: help up down restart ps logs install sh-app lint check-quality format build-assets cache-bust deploy-staging deploy-prod smoke-test smoke-test-staging smoke-test-prod
 
 help:
 	@echo "📋 Commandes disponibles :"
+	@echo ""
+	@echo "🔧 Configuration :"
+	@echo "  make setup         -> configuration initiale (.env, structure)"
 	@echo ""
 	@echo "🐳 Docker :"
 	@echo "  make up            -> démarrer les containers en arrière-plan"
@@ -21,22 +38,16 @@ help:
 	@echo "  make install       -> composer install dans le service 'app'"
 	@echo "  make sh-app        -> shell dans le conteneur 'app'"
 	@echo ""
+	@echo "🚀 Build & Assets :"
+	@echo "  make build-assets   -> build des assets avec cache-busting"
+	@echo "  make cache-bust     -> cache-busting automatique (recommandé)"
+	@echo "  make deploy-staging -> déploiement staging avec cache-busting"
+	@echo "  make deploy-prod    -> déploiement production avec cache-busting"
+	@echo ""
 	@echo "🧪 Tests :"
 	@echo "  make smoke-test    -> tests de smoke locaux"
 	@echo "  make smoke-test-staging -> tests de smoke sur staging"
 	@echo "  make smoke-test-prod -> tests de smoke sur production"
-	@echo "  make test-pipeline -> test du pipeline de déploiement"
-	@echo ""
-	@echo "🚀 Déploiement :"
-	@echo "  make setup-deployment -> configurer GCP et triggers"
-	@echo "  make deploy-staging -> déployer sur staging"
-	@echo "  make deploy-prod -> déployer sur production"
-	@echo "  make rollback-staging -> rollback staging"
-	@echo "  make rollback-prod -> rollback production"
-	@echo ""
-	@echo "🎨 Assets :"
-	@echo "  make generate-favicons -> générer les favicons"
-	@echo "  make test-favicons -> tester les favicons"
 	@echo ""
 	@echo "🔍 Qualité de code :"
 	@echo "  make lint          -> linter le code (JS + PHP)"
@@ -57,6 +68,13 @@ ps:
 
 logs:
 	$(DC) logs -f app
+
+# Commande simple pour démarrer
+dev:
+	$(DC) up -d
+	@echo "🚀 Application démarrée sur http://localhost:8080"
+	@echo "📊 Vérifier les logs: make logs"
+	@echo "🛑 Arrêter: make down"
 
 # --- Composer (dans le service 'app') ---
 # On utilise 'run' pour ne pas exiger que le conteneur soit déjà démarré.
@@ -90,54 +108,44 @@ format:
 	@echo "✅ PHP formaté"
 
 # --- Déploiement ---
-setup-gcp:
-	@echo "🔧 Configuration des ressources GCP..."
-	@./scripts/setup-gcp-resources.sh
-
-setup-triggers:
-	@echo "⚙️ Configuration des triggers Cloud Build..."
-	@./scripts/setup-cloud-build-triggers.sh
-
-setup-deployment: setup-gcp setup-triggers
-	@echo "✅ Configuration du pipeline de déploiement terminée!"
-
-test-pipeline:
-	@echo "🧪 Test du pipeline de déploiement..."
-	@./scripts/test-deployment-pipeline.sh
 
 smoke-test:
 	@echo "🧪 Tests de smoke locaux..."
-	@./scripts/smoke-tests.sh http://localhost:8080
+	@echo "Testing http://localhost:8080..."
+	@curl -f http://localhost:8080/ || (echo "❌ Home page failed" && exit 1)
+	@curl -f http://localhost:8080/api/config || (echo "❌ API config failed" && exit 1)
+	@echo "✅ Local smoke tests passed"
 
 smoke-test-staging:
 	@echo "🧪 Tests de smoke sur staging..."
-	@./scripts/smoke-tests.sh https://receipt-parser-staging-$(shell gcloud config get-value project 2>/dev/null || echo "264113083582").a.run.app
+	@SERVICE_URL=$$(gcloud run services describe receipt-parser --region=europe-west9 --format='value(status.url)' 2>/dev/null || echo "https://receipt-parser-staging-264113083582.a.run.app"); \
+	echo "Testing $$SERVICE_URL"; \
+	curl -f $$SERVICE_URL/ || (echo "❌ Staging home page failed" && exit 1); \
+	curl -f $$SERVICE_URL/api/config || (echo "❌ Staging API config failed" && exit 1); \
+	echo "✅ Staging smoke tests passed"
 
 smoke-test-prod:
 	@echo "🧪 Tests de smoke sur production..."
-	@./scripts/smoke-tests.sh https://receipt-parser-$(shell gcloud config get-value project 2>/dev/null || echo "264113083582").a.run.app
+	@SERVICE_URL=$$(gcloud run services describe receipt-parser --region=europe-west9 --format='value(status.url)' 2>/dev/null || echo "https://receipt-parser-264113083582.a.run.app"); \
+	echo "Testing $$SERVICE_URL"; \
+	curl -f $$SERVICE_URL/ || (echo "❌ Production home page failed" && exit 1); \
+	curl -f $$SERVICE_URL/api/config || (echo "❌ Production API config failed" && exit 1); \
+	echo "✅ Production smoke tests passed"
 
-deploy-staging:
-	@echo "🚀 Déploiement sur staging..."
-	@gcloud builds triggers run scan2sheet-staging-deploy --branch=staging
-
-deploy-prod:
-	@echo "🚀 Déploiement sur production..."
-	@gcloud builds triggers run scan2sheet-production-deploy --branch=main
-
-rollback-staging:
-	@echo "🔄 Rollback du déploiement staging..."
-	@./scripts/rollback-deployment.sh staging
-
-rollback-prod:
-	@echo "🔄 Rollback du déploiement production..."
-	@./scripts/rollback-deployment.sh production
 
 # --- Assets ---
-generate-favicons:
-	@echo "🎨 Génération des favicons..."
-	@./scripts/generate-favicons-node.js
+build-assets:
+	@echo "📦 Build des assets avec cache-busting..."
+	@./scripts/build-assets.sh
 
-test-favicons:
-	@echo "🧪 Test des favicons..."
-	@./scripts/test-favicons.sh
+cache-bust:
+	@echo "🔄 Cache-busting automatique..."
+	@./scripts/cache-bust-safe.sh
+
+deploy-staging:
+	@echo "🚀 Déploiement staging avec cache-busting..."
+	@./scripts/deploy-with-cache-bust.sh staging
+
+deploy-prod:
+	@echo "🚀 Déploiement production avec cache-busting..."
+	@./scripts/deploy-with-cache-bust.sh production

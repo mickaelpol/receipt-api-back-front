@@ -93,4 +93,3 @@ EXPOSE 8080
 
 # Point d'entrée
 ENTRYPOINT ["/usr/local/bin/start.sh"]
-CMD ["apache2-foreground"]

@@ -53,7 +53,14 @@ const $ = s => document.querySelector(s);
  */
 const setStatus = msg => {
     const el = $('#status');
-    if (el) el.textContent = msg;
+    if (el) {
+        // Si le message contient du HTML (comme notre point vert), utiliser innerHTML
+        if (msg.includes('<span')) {
+            el.innerHTML = msg;
+        } else {
+            el.textContent = msg;
+        }
+    }
 };
 
 /**
@@ -62,10 +69,211 @@ const setStatus = msg => {
  */
 const enableSave = on => {
     const b = $('#btnSave');
-    if (b) b.disabled = !on;
+    if (b) {
+        // Désactiver le bouton si l'utilisateur n'est pas autorisé
+        b.disabled = !on || !isUserAuthorized();
+    }
 };
 
+/**
+ * Gérer l'état des champs de fichiers selon l'autorisation
+ */
+function updateFileInputsState() {
+    const singleFile = $('#file');
+    const multiFile = $('#multiFiles');
+
+    if (singleFile) {
+        singleFile.disabled = !isUserAuthorized();
+    }
+    if (multiFile) {
+        multiFile.disabled = !isUserAuthorized();
+    }
+}
+
 const TOAST_DURATION = 3000;
+
+// Configuration du monitoring des services
+const SERVICE_MONITOR_INTERVAL = 10000; // 10 secondes (modifiable)
+let serviceMonitorInterval = null;
+
+/**
+ * Mettre à jour le statut d'un service
+ * @param {string} serviceId ID de l'élément (healthStatus ou readyStatus)
+ * @param {boolean} isOnline État du service
+ * @param {string} message Message à afficher
+ * @param {string} details Détails supplémentaires
+ */
+function updateServiceStatus(serviceId, isOnline, message, details = '') {
+    const element = document.getElementById(serviceId);
+    if (!element) return;
+
+    if (isOnline) {
+        element.className = 'badge bg-success';
+        element.textContent = `● ${message}`;
+        element.title = details || `${serviceId === 'healthStatus' ? 'Application' : 'Services'} opérationnel`;
+    } else {
+        element.className = 'badge bg-danger';
+        element.textContent = `● ${message}`;
+        element.title = details || `${serviceId === 'healthStatus' ? 'Application' : 'Services'} hors service`;
+    }
+}
+
+/**
+ * Vérifier l'état d'un service
+ * @param {string} endpoint Endpoint à tester (/health ou /ready)
+ * @param {string} serviceId ID de l'élément à mettre à jour
+ * @returns {Promise<void>}
+ */
+async function checkService(endpoint, serviceId) {
+    try {
+        const response = await fetch(`${BACK_BASE}${endpoint}`, {
+            method: 'GET',
+            cache: 'no-store'
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            let status = data.status || 'OK';
+            let details = '';
+
+            // Ajouter des détails selon l'endpoint
+            if (endpoint === '/health') {
+                details = `Application en vie - ${data.timestamp || 'maintenant'}`;
+            } else if (endpoint === '/ready') {
+                details = 'PHP + DocAI + Credentials OK';
+                if (data.credentials) {
+                    details += ` (${data.credentials.project_id || 'GCP'})`;
+                }
+                if (data.timestamp) {
+                    details += ` - ${data.timestamp}`;
+                }
+            }
+
+            updateServiceStatus(serviceId, true, status, details);
+        } else {
+            const errorText = await response.text();
+            let errorDetails = `HTTP ${response.status}`;
+            try {
+                const errorData = JSON.parse(errorText);
+                if (errorData.error) {
+                    errorDetails += `: ${errorData.error}`;
+                }
+            } catch (e) {
+                errorDetails += `: ${errorText.substring(0, 50)}`;
+            }
+
+            updateServiceStatus(serviceId, false, 'Error', errorDetails);
+        }
+    } catch (error) {
+        updateServiceStatus(serviceId, false, 'Offline', `Connexion impossible: ${error.message}`);
+    }
+}
+
+/**
+ * Vérifier l'état de tous les services
+ */
+async function checkAllServices() {
+    await Promise.all([
+        checkService('/health', 'healthStatus'),
+        checkService('/ready', 'readyStatus')
+    ]);
+}
+
+/**
+ * Démarrer le monitoring des services
+ */
+function startServiceMonitoring() {
+    // Arrêter le monitoring existant s'il y en a un
+    if (serviceMonitorInterval) {
+        clearInterval(serviceMonitorInterval);
+    }
+
+    // Vérification immédiate
+    checkAllServices();
+
+    // Puis toutes les 10 secondes
+    serviceMonitorInterval = setInterval(checkAllServices, SERVICE_MONITOR_INTERVAL);
+}
+
+/**
+ * Arrêter le monitoring des services
+ */
+function stopServiceMonitoring() {
+    if (serviceMonitorInterval) {
+        clearInterval(serviceMonitorInterval);
+        serviceMonitorInterval = null;
+    }
+}
+
+// === FONCTIONS DE TEST/SIMULATION ===
+/**
+ * Simuler une panne d'un service (pour test)
+ * @param {string} serviceId ID du service à simuler en panne
+ */
+function simulateServiceFailure(serviceId) {
+    if (serviceId === 'healthStatus') {
+        updateServiceStatus('healthStatus', false, 'Error', 'Simulation: Application hors service');
+    } else if (serviceId === 'readyStatus') {
+        updateServiceStatus('readyStatus', false, 'Error', 'Simulation: DocAI inaccessible');
+    }
+}
+
+/**
+ * Simuler une récupération d'un service (pour test)
+ * @param {string} serviceId ID du service à simuler en récupération
+ */
+function simulateServiceRecovery(serviceId) {
+    if (serviceId === 'healthStatus') {
+        updateServiceStatus('healthStatus', true, 'alive', 'Simulation: Application récupérée');
+    } else if (serviceId === 'readyStatus') {
+        updateServiceStatus('readyStatus', true, 'ready', 'Simulation: Services récupérés');
+    }
+}
+
+/**
+ * Tester tous les scénarios d'erreur (pour debug)
+ */
+function testAllErrorScenarios() {
+    console.log('🧪 Test des scénarios d\'erreur...');
+
+    // Test 1: App en panne
+    setTimeout(() => {
+        simulateServiceFailure('healthStatus');
+        console.log('❌ Simulé: App en panne');
+    }, 1000);
+
+    // Test 2: Services en panne
+    setTimeout(() => {
+        simulateServiceFailure('readyStatus');
+        console.log('❌ Simulé: Services en panne');
+    }, 2000);
+
+    // Test 3: Récupération App
+    setTimeout(() => {
+        simulateServiceRecovery('healthStatus');
+        console.log('✅ Simulé: App récupérée');
+    }, 5000);
+
+    // Test 4: Récupération Services
+    setTimeout(() => {
+        simulateServiceRecovery('readyStatus');
+        console.log('✅ Simulé: Services récupérés');
+    }, 7000);
+
+    // Test 5: Retour au monitoring normal
+    setTimeout(() => {
+        startServiceMonitoring();
+        console.log('🔄 Retour au monitoring normal');
+    }, 10000);
+}
+
+// Exposer les fonctions de test dans la console pour debug
+if (typeof window !== 'undefined') {
+    window.simulateServiceFailure = simulateServiceFailure;
+    window.simulateServiceRecovery = simulateServiceRecovery;
+    window.testAllErrorScenarios = testAllErrorScenarios;
+    window.checkAllServices = checkAllServices;
+}
 
 /* --- Toast (warning soft) --- */
 function ensureToastStyles() {
@@ -225,6 +433,65 @@ const showAuthButton = () => { const b = $('#btnAuth'); if (b) b.style.display =
 const hideAuthButton = () => { const b = $('#btnAuth'); if (b) b.style.display = 'none'; };
 const showSwitchButton = () => { const b = $('#btnSwitch'); if (b) b.style.display = 'inline-block'; };
 const hideSwitchButton = () => { const b = $('#btnSwitch'); if (b) b.style.display = 'none'; };
+const hideAuthStatus = () => { const s = $('#authStatus'); if (s) s.style.display = 'none'; };
+const showAuthStatus = () => { const s = $('#authStatus'); if (s) s.style.display = 'inline'; };
+
+// Variable globale pour tracker l'état d'erreur d'authentification
+let hasAuthError = false;
+
+/**
+ * Vérifier si l'utilisateur est autorisé à effectuer des actions
+ * @returns {boolean} True si autorisé, false sinon
+ */
+function isUserAuthorized() {
+    return currentUserEmail && !hasAuthError;
+}
+
+/**
+ * Bloquer l'action si l'utilisateur n'est pas autorisé
+ * @param {string} action Description de l'action bloquée
+ * @returns {boolean} True si autorisé, false si bloqué
+ */
+function checkAuthorization(action = 'cette action') {
+    if (!isUserAuthorized()) {
+        setAnalysisStatus(`❌ Compte non autorisé - ${action} bloquée`, '#dc3545');
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Afficher un message d'analyse en dessous du statut de connexion
+ * @param {string} message Le message à afficher
+ * @param {string} color Couleur du message (par défaut: #666)
+ */
+function setAnalysisStatus(message, color = '#666') {
+    // Créer ou mettre à jour un div pour les messages d'analyse
+    let analysisDiv = document.getElementById('analysisStatus');
+    if (!analysisDiv) {
+        analysisDiv = document.createElement('div');
+        analysisDiv.id = 'analysisStatus';
+        analysisDiv.style.fontSize = '0.9em';
+        analysisDiv.style.marginTop = '5px';
+
+        // Insérer après le div status
+        const statusDiv = document.getElementById('status');
+        if (statusDiv && statusDiv.parentNode) {
+            statusDiv.parentNode.insertBefore(analysisDiv, statusDiv.nextSibling);
+        }
+    }
+
+    analysisDiv.style.color = color;
+    analysisDiv.textContent = message;
+    analysisDiv.style.display = message ? 'block' : 'none';
+}
+
+/**
+ * Effacer le message d'analyse
+ */
+function clearAnalysisStatus() {
+    setAnalysisStatus('');
+}
 
 function clearSheetsSelect(placeholder = '') {
     const sel = $('#sheetSelect');
@@ -234,6 +501,7 @@ function clearSheetsSelect(placeholder = '') {
 function needAuthUI(msg = 'Veuillez vous connecter.') {
     showAuthButton();
     hideSwitchButton();
+    showAuthStatus();
     setAuthStatus(msg, false);
     enableSave(false);
     clearSheetsSelect('Feuilles indisponibles');
@@ -241,6 +509,7 @@ function needAuthUI(msg = 'Veuillez vous connecter.') {
 function neutralAuthUI(msg = 'Connexion…') {
     showAuthButton();
     hideSwitchButton();
+    showAuthStatus();
     setAuthStatus(msg, null);
     enableSave(false);
 }
@@ -375,26 +644,40 @@ function applyAuthStack() {
 window.addEventListener('resize', applyAuthStack);
 document.addEventListener('DOMContentLoaded', applyAuthStack);
 
+// Arrêter le monitoring des services quand la page se ferme
+window.addEventListener('beforeunload', stopServiceMonitoring);
+
 async function init() {
     try {
         // Afficher un splash de connexion
         neutralAuthUI('Connexion…');
-        setStatus('Initialisation...');
+
+        // Ne pas modifier le statut si on est déjà connecté
+        if (!currentUserEmail) {
+            setStatus('Initialisation...');
+        }
 
         await loadConfig();
         bindUI();
         await bootGoogle();
 
         // Connexion silencieuse avec feedback
-        setStatus('Connexion...');
+        if (!currentUserEmail) {
+            setStatus('Connexion...');
+        }
         await autoSignIn();
 
         syncPreviewHeight();
         initMultiUIGrid();
         setupFloatingActions();
         renderMultiEmptyIfNeeded();
+
+        // Démarrer le monitoring des services
+        startServiceMonitoring();
     } catch {
-        setStatus('Config indisponible');
+        if (!currentUserEmail) {
+            setStatus('Config indisponible');
+        }
         needAuthUI('Erreur de configuration');
     }
 }
@@ -428,7 +711,11 @@ function bindUI() {
             neutralAuthUI('Connexion…');
             await ensureConnected(true);
             await afterSignedIn();
-            setStatus('Connecté ✓');
+            setStatus(`<span style="color: #28a745; font-weight: bold;">●</span> Connecté - ${currentUserEmail}`);
+            clearAnalysisStatus();
+            hideAuthStatus();
+            hasAuthError = false;
+            updateFileInputsState();
         } catch (e) { handleAuthError(e); }
     });
     $('#btnSwitch')?.addEventListener('click', switchAccount);
@@ -493,7 +780,12 @@ function resetForm() {
     setPreview(null);
     resetFileInput();
     enableSave(false);
-    setStatus('Prêt.');
+    clearAnalysisStatus();
+
+    // Ne pas modifier le statut si on est connecté ou si on a une erreur d'auth
+    if (!currentUserEmail && !hasAuthError) {
+        setStatus('<span style="color: #28a745; font-weight: bold;">●</span> Connecté.');
+    }
 }
 
 function parseEuroToNumber(s) {
@@ -542,7 +834,11 @@ async function autoSignIn() {
         if (cached) {
             accessToken = cached;
             await afterSignedIn();
-            setStatus('Connecté ✓');
+            setStatus(`<span style="color: #28a745; font-weight: bold;">●</span> Connecté - ${currentUserEmail}`);
+            clearAnalysisStatus();
+            hideAuthStatus();
+            hasAuthError = false;
+            updateFileInputsState();
             return;
         }
 
@@ -551,7 +847,11 @@ async function autoSignIn() {
             try {
                 await ensureConnected(false); // false = pas de popup forcé
                 await afterSignedIn();
-                setStatus('Connecté ✓');
+                setStatus(`<span style="color: #28a745; font-weight: bold;">●</span> Connecté - ${currentUserEmail}`);
+                clearAnalysisStatus();
+                hideAuthStatus();
+                hasAuthError = false;
+                updateFileInputsState();
                 return;
             } catch {
                 // Continue vers l'UI de connexion
@@ -612,11 +912,20 @@ async function afterSignedIn() {
     if (accessToken && !loadValidToken()) storeToken(accessToken, 55 * 60);
 
     if (currentUserEmail) {
-        setAuthStatus(`Connecté · ${currentUserEmail}`, true);
+        setStatus(`<span style="color: #28a745; font-weight: bold;">●</span> Connecté - ${currentUserEmail}`);
+        clearAnalysisStatus();
         hideAuthButton();
+        hideAuthStatus();
         showSwitchButton();
+        hasAuthError = false; // Réinitialiser l'erreur d'auth
+        updateFileInputsState(); // Réactiver les champs de fichiers
     }
-    await populateSheets();
+    try {
+        await populateSheets();
+    } catch (e) {
+        console.log('Erreur populateSheets:', e);
+        // Ne pas modifier le statut en cas d'erreur
+    }
     validateCanSave();
     syncPreviewHeight();
 }
@@ -630,10 +939,19 @@ function handleAuthError(err, { showButton = true } = {}) {
     signOutQuiet({ keepHint: false });
     const isUnauth = isUnauthorizedEmailError(err);
     setAuthStatus(isUnauth ? (raw || 'Email non autorisé') : 'Connexion requise.', false);
+
+    // Afficher le point rouge pour les emails non autorisés
+    if (isUnauth) {
+        setStatus('<span style="color: #dc3545; font-weight: bold;">●</span> Email non autorisé');
+        showAuthStatus();
+        hasAuthError = true; // Marquer qu'on a une erreur d'auth
+    }
+
     if (showButton) showAuthButton(); else hideAuthButton();
     hideSwitchButton();
     clearSheetsSelect('Feuilles indisponibles');
     enableSave(false);
+    updateFileInputsState(); // Désactiver les champs de fichiers
 }
 
 /* ========= Sheets ========= */
@@ -663,8 +981,16 @@ function waitFor(test, every = 100, timeout = 10000) {
 async function onImagePicked(e) {
     const file = e.target.files?.[0];
     if (!file) { setPreview(null); return; }
+
+    // Vérifier l'autorisation avant de continuer
+    if (!checkAuthorization('upload de photo')) {
+        // Réinitialiser le champ file pour permettre une nouvelle sélection
+        e.target.value = '';
+        return;
+    }
+
     enableSave(false);
-    setStatus('Analyse du ticket…');
+    setAnalysisStatus('Analyse du ticket…', '#007bff');
     setPreview(URL.createObjectURL(file));
     try {
         if (!accessToken) await ensureConnected(false);
@@ -682,10 +1008,10 @@ async function onImagePicked(e) {
         if (json.supplier_name) $('#merchant').value = json.supplier_name;
         if (json.receipt_date) $('#date').value = json.receipt_date;
         if (json.total_amount != null) $('#total').value = Number(json.total_amount).toFixed(2).replace('.', ',');
-        setStatus('Reconnaissance OK. Vérifie puis « Enregistrer ».');
+        setAnalysisStatus('Reconnaissance OK. Vérifie puis « Enregistrer ».', '#28a745');
     } catch (err) {
         if (isUnauthorizedEmailError(err)) handleAuthError(err);
-        else { setStatus('Analyse indisponible — complète manuellement.'); }
+        else { setAnalysisStatus('Analyse indisponible — complète manuellement.', '#dc3545'); }
     } finally {
         const fi = document.getElementById('file');
         if (fi) { try { fi.value = ''; } catch { } }
@@ -707,6 +1033,11 @@ function fileToBase64NoPrefix(file) {
 
 /* ========= Écriture simple ========= */
 async function saveToSheet() {
+    // Vérifier l'autorisation avant de continuer
+    if (!checkAuthorization('enregistrement')) {
+        return;
+    }
+
     try {
         if (!accessToken) await ensureConnected(false);
         await api('/api/auth/me');
@@ -716,18 +1047,18 @@ async function saveToSheet() {
         const dateISO = $('#date').value;
         const totalNum = parseEuroToNumber($('#total').value);
         if (!supplier || !dateISO || totalNum == null || !sheetName || !who) throw new Error('Champs incomplets');
-        setStatus('Écriture…');
+        setAnalysisStatus('Écriture…', '#007bff');
         const res = await api('/api/sheets/write', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sheetName, who, supplier, dateISO, total: totalNum })
         });
         if (!res.ok) throw new Error(res.error || 'Échec écriture');
-        setStatus(`Enregistré ✔ (onglet « ${sheetName} », ${who})`);
+        setAnalysisStatus(`Enregistré ✔ (onglet « ${sheetName} », ${who})`, '#28a745');
         enableSave(false);
     } catch (e) {
         if (isUnauthorizedEmailError(e)) handleAuthError(e);
-        else { setStatus('Erreur : ' + (e.message || e)); }
+        else { setAnalysisStatus('Erreur : ' + (e.message || e), '#dc3545'); }
     }
 }
 
@@ -759,6 +1090,7 @@ async function switchAccount() {
         hideSwitchButton();
         clearSheetsSelect('Changement de compte…');
         setAuthStatus('Changement de compte…', null);
+        setStatus('<span style="color: #ff8c00; font-weight: bold;">●</span> Changement de compte...');
 
         await new Promise((resolve, reject) => {
             tokenClient.callback = (resp) => {
@@ -771,9 +1103,13 @@ async function switchAccount() {
         });
 
         await afterSignedIn();
-        setStatus('Connecté ✓ (compte changé)');
+        setStatus('<span style="color: #28a745; font-weight: bold;">●</span> Connecté (compte changé)');
+        clearAnalysisStatus();
         hideAuthButton();
+        hideAuthStatus();
         showSwitchButton();
+        hasAuthError = false;
+        updateFileInputsState();
     } catch (e) {
         if (isUnauthorizedEmailError(e)) { handleAuthError(e, { showButton: true }); }
         else { needAuthUI('Veuillez vous connecter.'); }
@@ -921,6 +1257,14 @@ function switchMode(mode) {
 async function onMultiFilesPicked(e) {
     const incoming = Array.from(e.target.files || []);
     if (!incoming.length) return;
+
+    // Vérifier l'autorisation avant de continuer
+    if (!checkAuthorization('upload multiple de photos')) {
+        // Réinitialiser le champ file pour permettre une nouvelle sélection
+        try { e.target.value = ''; } catch { }
+        return;
+    }
+
     try { e.target.value = ''; } catch { }
 
     const remaining = Math.max(0, MAX_UPLOADS - multiItems.length);
@@ -1103,6 +1447,11 @@ async function runBatchScan() {
 
 /** Enregistrer tout */
 async function runBatchSave() {
+    // Vérifier l'autorisation avant de continuer
+    if (!checkAuthorization('enregistrement multiple')) {
+        return;
+    }
+
     try {
         if (!accessToken) await ensureConnected(false);
         await api('/api/auth/me');
@@ -1150,10 +1499,10 @@ async function runBatchSave() {
         };
 
         await runWithConcurrency(rows, writer, 3);
-        setStatus(`Enregistrement terminé (${rows.length} lignes).`);
+        setAnalysisStatus(`Enregistrement terminé (${rows.length} lignes).`, '#28a745');
 
     } catch (e) {
-        setStatus('Erreur enregistrement multiple : ' + (e.message || e));
+        setAnalysisStatus('Erreur enregistrement multiple : ' + (e.message || e), '#dc3545');
     }
 }
 

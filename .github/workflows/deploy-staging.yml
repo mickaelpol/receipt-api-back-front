@@ -1,0 +1,71 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [ staging ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache-busting automatique
+        run: |
+          echo "🔄 Cache-busting automatique pour staging..."
+          chmod +x scripts/cache-bust-safe.sh
+          ./scripts/cache-bust-safe.sh
+          
+          echo "📊 Vérification des changements:"
+          git diff --name-only
+          if git diff --quiet; then
+            echo "ℹ️  Aucun changement détecté dans les assets"
+          else
+            echo "✅ Cache-busting appliqué avec succès"
+            git add frontend/index.html
+            git commit -m "chore: cache-busting automatique pour staging [skip ci]" || echo "ℹ️  Pas de commit nécessaire"
+          fi
+
+      - name: Setup Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          project_id: scan-document-ai
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker europe-west9-docker.pkg.dev
+
+      - name: Trigger Cloud Build (Staging)
+        run: |
+          gcloud builds submit \
+            --config cloudbuild.yaml \
+            --substitutions=_ENV=staging,_REGION=europe-west9,_SERVICE_NAME=receipt-parser \
+            --region=europe-west9
+
+      - name: Run Smoke Tests
+        run: |
+          SERVICE_URL=$(gcloud run services describe receipt-parser \
+            --region=europe-west9 \
+            --format='value(status.url)')
+          
+          echo "Testing staging deployment: $SERVICE_URL"
+          
+          # Test endpoints
+          curl -f "$SERVICE_URL/" || exit 1
+          curl -f "$SERVICE_URL/api/config" || exit 1
+          
+          echo "✅ Staging deployment successful"
+
+      - name: Notify Success
+        if: success()
+        run: |
+          echo "🎉 Staging deployment successful!"
+          echo "Service URL: $(gcloud run services describe receipt-parser --region=europe-west9 --format='value(status.url)')"
+
+      - name: Notify Failure
+        if: failure()
+        run: |
+          echo "❌ Staging deployment failed!"
+          # Ici on pourrait envoyer un email via SendGrid ou autre service

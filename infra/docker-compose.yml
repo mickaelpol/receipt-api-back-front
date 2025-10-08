@@ -2,15 +2,23 @@ services:
     app:
         build: 
             context: ..
-            dockerfile: Dockerfile
+            dockerfile: infra/Dockerfile
         container_name: receipt-app
         ports:
-            - "8080:80"
+            - "8080:8080"
         environment:
-            APACHE_RUN_USER: www-data
-            APACHE_RUN_GROUP: www-data
+            APP_ENV: local
+            DEBUG: 1
+            PORT: 8080
         volumes:
             - ../backend/keys:/var/www/html/keys:ro
+            - ../.htaccess:/var/www/html/.htaccess:ro
+            - ../backend/index.php:/var/www/html/index.php:ro
+            - ../backend/bootstrap.php:/var/www/html/bootstrap.php:ro
+            - ../backend/app.php:/var/www/html/app.php:ro
+            - ../backend/composer.json:/var/www/html/composer.json:ro
+            - ../backend/composer.lock:/var/www/html/composer.lock:ro
+            - ../frontend:/var/www/html/frontend:ro
         env_file:
-            - ../.env
+            - .env
         working_dir: /var/www/html

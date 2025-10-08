@@ -10,6 +10,68 @@ declare(strict_types=1);
 // Include bootstrap (autoload + app declarations)
 require __DIR__ . '/bootstrap.php';
 
+/* ---------- DEBUG & TRACEABILITY (APP_ENV=local only) ---------- */
+$APP_ENV = getenv('APP_ENV') ?: 'prod';
+$DEBUG = (getenv('DEBUG') && getenv('DEBUG') !== '0');
+
+// Fonction pour capturer var_dump en mode debug
+function debugDump($data, $label = 'DEBUG') {
+    global $APP_ENV, $DEBUG;
+    if ($APP_ENV === 'local' && $DEBUG) {
+        $GLOBALS['_DEBUG_OUTPUT'][] = [
+            'label' => $label,
+            'data' => $data,
+            'file' => debug_backtrace()[1]['file'] ?? 'unknown',
+            'line' => debug_backtrace()[1]['line'] ?? 'unknown'
+        ];
+    }
+}
+
+// Fonction pour ajouter des headers de debug
+function addDebugHeaders($handler, $route) {
+    global $APP_ENV;
+    if ($APP_ENV === 'local') {
+        header("X-Handler: $handler");
+        header("X-Route: $route");
+        header("X-Timestamp: " . date('c'));
+    }
+}
+
+// Fonction pour afficher les debug dumps
+function outputDebugDumps() {
+    global $APP_ENV, $DEBUG, $_DEBUG_OUTPUT;
+    
+    if ($APP_ENV !== 'local' || !$DEBUG || empty($_DEBUG_OUTPUT)) {
+        return;
+    }
+    
+    $contentType = $_SERVER['HTTP_ACCEPT'] ?? '';
+    
+    // Si c'est une requête JSON, on ajoute les dumps en commentaire
+    if (strpos($contentType, 'application/json') !== false) {
+        echo "\n/* DEBUG DUMPS:\n";
+        foreach ($_DEBUG_OUTPUT as $dump) {
+            echo "=== {$dump['label']} ({$dump['file']}:{$dump['line']}) ===\n";
+            ob_start();
+            var_dump($dump['data']);
+            echo ob_get_clean();
+            echo "\n";
+        }
+        echo "*/\n";
+    } else {
+        // Pour les requêtes HTML, on affiche directement
+        echo "\n<div style='background:#f0f0f0;border:1px solid #ccc;padding:10px;margin:10px;font-family:monospace;'>";
+        echo "<h3>DEBUG OUTPUT (APP_ENV=local)</h3>";
+        foreach ($_DEBUG_OUTPUT as $dump) {
+            echo "<h4>{$dump['label']} ({$dump['file']}:{$dump['line']})</h4>";
+            echo "<pre>";
+            var_dump($dump['data']);
+            echo "</pre>";
+        }
+        echo "</div>";
+    }
+}
+
 /* ---------- CORS ---------- */
 // Same-origin policy pour la production, CORS permissif pour le dev local
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
@@ -87,8 +149,56 @@ if ($path === '/api/debug/headers') {
     exit;
 }
 
-/* ---- GET /api/health ---- */
-if ($path === '/api/health' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+/* ---- GET /debug/routes (DEV ONLY) ---- */
+if ($path === '/debug/routes' && $APP_ENV === 'local') {
+    addDebugHeaders('api.php::debug/routes', '/debug/routes');
+    
+    $routes = [
+        'GET /api/config' => 'api.php::config - Configuration de l\'application',
+        'GET /api/auth/me' => 'api.php::auth/me - Authentification utilisateur',
+        'GET /api/sheets' => 'api.php::sheets - Liste des feuilles Google Sheets',
+        'POST /api/scan' => 'api.php::scan - Scanner un ticket',
+        'POST /api/scan-batch' => 'api.php::scan-batch - Scanner plusieurs tickets',
+        'GET /api/health' => 'api.php::health - Santé de l\'application',
+        'GET /api/ready' => 'api.php::ready - Prêt à recevoir des requêtes',
+        'GET /api/debug/headers' => 'api.php::debug/headers - Debug des headers HTTP',
+        'GET /debug/routes' => 'api.php::debug/routes - Cette page (dev seulement)',
+    ];
+    
+    header('Content-Type: text/html; charset=utf-8');
+    echo "<!DOCTYPE html><html><head><title>Routes Debug - Receipt API</title>";
+    echo "<style>body{font-family:monospace;margin:20px;} .route{margin:10px 0;padding:10px;background:#f5f5f5;border-left:4px solid #007cba;} .method{color:#007cba;font-weight:bold;} .path{color:#333;} .handler{color:#666;}</style>";
+    echo "</head><body>";
+    echo "<h1>Routes Debug - Receipt API</h1>";
+    echo "<p><strong>APP_ENV:</strong> $APP_ENV</p>";
+    echo "<p><strong>DEBUG:</strong> " . ($DEBUG ? 'ON' : 'OFF') . "</p>";
+    echo "<p><strong>Timestamp:</strong> " . date('c') . "</p>";
+    echo "<h2>Available Routes:</h2>";
+    
+    foreach ($routes as $route => $description) {
+        $parts = explode(' ', $route, 2);
+        $method = $parts[0];
+        $path = $parts[1];
+        echo "<div class='route'>";
+        echo "<span class='method'>$method</span> <span class='path'>$path</span><br>";
+        echo "<span class='handler'>$description</span>";
+        echo "</div>";
+    }
+    
+    echo "<h2>Request Info:</h2>";
+    echo "<p><strong>Current URL:</strong> " . ($_SERVER['REQUEST_URI'] ?? 'N/A') . "</p>";
+    echo "<p><strong>Method:</strong> " . ($_SERVER['REQUEST_METHOD'] ?? 'N/A') . "</p>";
+    echo "<p><strong>Host:</strong> " . ($_SERVER['HTTP_HOST'] ?? 'N/A') . "</p>";
+    
+    outputDebugDumps();
+    echo "</body></html>";
+    exit;
+}
+
+/* ---- GET /api/health & /health ---- */
+if (($path === '/api/health' || $path === '/health') && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+    addDebugHeaders('api.php::health', $path);
+    
     // Basic health check - just verify the process is alive
     sendJsonResponse([
         'ok' => true,
@@ -97,8 +207,8 @@ if ($path === '/api/health' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') 
     ]);
 }
 
-/* ---- GET /api/ready ---- */
-if ($path === '/api/ready' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+/* ---- GET /api/ready & /ready ---- */
+if (($path === '/api/ready' || $path === '/ready') && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
     // Readiness check - verify credentials and critical dependencies
     $validation = validateGoogleCredentials();
     
@@ -153,9 +263,20 @@ if ($path === '/api/ready' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
 
 /* ---- GET /api/config ---- */
 if ($path === '/api/config' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+    addDebugHeaders('api.php::config', '/api/config');
+    
+    // Debug: Afficher les variables d'environnement en mode dev
+    debugDump([
+        'ALLOWED_EMAILS' => $ALLOWED_EMAILS,
+        'DEFAULT_SHEET' => $DEFAULT_SHEET,
+        'WHO_COLUMNS' => $WHO_COLUMNS,
+        'APP_ENV' => $APP_ENV
+    ], 'Config Variables');
+    
     // Cache court pour éviter les requêtes répétées
     header('Cache-Control: public, max-age=300'); // 5 minutes
-    sendJsonResponse([
+    
+    $response = [
         'ok'              => true,
         'client_id'       => $CLIENT_ID,
         'default_sheet'   => $DEFAULT_SHEET,
@@ -163,11 +284,21 @@ if ($path === '/api/config' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') 
             '://' . $_SERVER['HTTP_HOST'] . '/api/scan',
         'who_options'     => array_keys($WHO_COLUMNS),
         'max_batch'       => $MAX_BATCH_UPLOADS,
-    ]);
+    ];
+    
+    sendJsonResponse($response);
+    
+    // Afficher les debug dumps après la réponse JSON
+    outputDebugDumps();
+    exit;
 }
 
 /* ---- GET /api/auth/me ---- */
 if ($path === '/api/auth/me') {
+    addDebugHeaders('api.php::auth/me', '/api/auth/me');
+    
+    debugDump($ALLOWED_EMAILS, 'ALLOWED_EMAILS');
+    
     try {
         $auth = requireGoogleUserAllowed($ALLOWED_EMAILS, $CLIENT_ID);
         sendJsonResponse(['ok' => true, 'email' => $auth['email']]);

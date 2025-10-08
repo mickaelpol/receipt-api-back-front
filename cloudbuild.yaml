@@ -46,7 +46,7 @@ steps:
       - '-t'
       - '${_REGION}-docker.pkg.dev/$PROJECT_ID/apps-ticket/receipt-parser:latest'
       - '-f'
-      - 'Dockerfile'
+      - 'infra/Dockerfile'
       - '.'
     timeout: '600s'  # 10 minutes timeout
 

@@ -1,8 +1,0 @@
-.git
-.github
-docker/
-node_modules/
-dist/
-.env
-backend/keys/
-backend/vendor/
