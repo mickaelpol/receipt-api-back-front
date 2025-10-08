@@ -339,6 +339,18 @@ function requireGoogleUserAllowed(array $allowed, string $clientId): array
  */
 function validateGoogleCredentials(): array
 {
+    // On Cloud Run, utiliser les credentials du Service Account par défaut
+    $isCloudRun = getenv('K_SERVICE') !== false; // K_SERVICE est défini sur Cloud Run
+    
+    if ($isCloudRun) {
+        return [
+            'valid' => true,
+            'message' => 'Using Cloud Run default credentials',
+            'code' => 'CLOUD_RUN_DEFAULT'
+        ];
+    }
+    
+    // En local, vérifier GOOGLE_APPLICATION_CREDENTIALS
     $credentialsPath = getenv('GOOGLE_APPLICATION_CREDENTIALS');
     
     if (!$credentialsPath) {
