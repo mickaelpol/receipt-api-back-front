@@ -216,8 +216,22 @@ make smoke-test-prod
 
 ## 🛠️ Résolution des problèmes
 
+### **Problème : 403 Forbidden sur Cloud Run**
+**Symptôme :** `GET https://[url]/ 403 (Forbidden)` et `/api/config 404`
+
+**Cause :** Le fichier `.htaccess` n'est pas copié dans l'image Docker
+
+**Solution :**
+✅ **Déjà corrigé** : Le `.htaccess` est maintenant copié dans `infra/Dockerfile`
+
 ### **Problème : "Dockerfile not found"**
 ✅ **Déjà corrigé** : Le chemin est maintenant `infra/Dockerfile` dans `cloudbuild.yaml`
+
+### **Problème : "bash: line 3: gcloud: command not found" dans smoke tests**
+**Cause :** Utilisation de l'image `gcr.io/cloud-builders/curl` qui ne contient pas `gcloud`
+
+**Solution :**
+✅ **Déjà corrigé** : Utilisation de `gcr.io/cloud-builders/gcloud` pour les smoke tests
 
 ### **Problème : "Permission denied" dans Cloud Build**
 ```bash
