@@ -21,7 +21,7 @@ setup:
 	@echo "🚀 Ensuite lancez: make up"
 
 # ====== Cibles ======
-.PHONY: help up down restart ps logs install sh-app lint check-quality format build-assets cache-bust deploy-staging deploy-prod smoke-test smoke-test-staging smoke-test-prod check-deployment setup-gcp-secrets test-cloudbuild
+.PHONY: help up down restart ps logs install sh-app lint check-quality format build-assets cache-bust deploy-staging deploy-prod smoke-test smoke-test-staging smoke-test-prod check-deployment test-docker setup-gcp-secrets test-cloudbuild
 
 help:
 	@echo "📋 Commandes disponibles :"
@@ -49,6 +49,7 @@ help:
 	@echo "  make smoke-test-staging -> tests de smoke sur staging"
 	@echo "  make smoke-test-prod -> tests de smoke sur production"
 	@echo "  make check-deployment -> vérifier l'état du déploiement Cloud Run"
+	@echo "  make test-docker   -> tester le build Docker localement"
 	@echo "  make test-cloudbuild -> test du cloudbuild.yaml localement"
 	@echo ""
 	@echo "🔍 Qualité de code :"
@@ -139,6 +140,9 @@ smoke-test-prod:
 
 check-deployment:
 	@./scripts/check-deployment-status.sh
+
+test-docker:
+	@./scripts/test-docker-build.sh
 
 
 # --- Assets ---
