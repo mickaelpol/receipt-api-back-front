@@ -105,7 +105,7 @@ steps:
     timeout: '600s'  # 10 minutes timeout
 
   # Step 5: Smoke tests (only for staging, prod after approval)
-  - name: 'gcr.io/cloud-builders/curl'
+  - name: 'gcr.io/cloud-builders/gcloud'
     id: 'smoke-tests'
     entrypoint: 'bash'
     args:
