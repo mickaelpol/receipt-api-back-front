@@ -1471,7 +1471,13 @@ async function runBatchSave() {
 
         if (!rows.length) throw new Error('Aucune carte complète à enregistrer.');
 
-        const writer = async (r) => {
+        const writer = async (r, idx) => {
+            // Délai aléatoire pour éviter les collisions (100-300ms)
+            // Chaque ticket attend un peu plus que le précédent
+            const baseDelay = idx * 100; // Espacement de base
+            const randomJitter = Math.random() * 200; // Jitter aléatoire 0-200ms
+            await new Promise(resolve => setTimeout(resolve, baseDelay + randomJitter));
+
             const res = await api('/api/sheets/write', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1498,7 +1504,8 @@ async function runBatchSave() {
             return res.ok;
         };
 
-        await runWithConcurrency(rows, writer, 3);
+        // Réduire la concurrence à 1 pour garantir l'ordre
+        await runWithConcurrency(rows, writer, 1);
         setAnalysisStatus(`Enregistrement terminé (${rows.length} lignes).`, '#28a745');
 
     } catch (e) {

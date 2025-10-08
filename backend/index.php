@@ -342,6 +342,8 @@ if ($path === '/api/sheets' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') 
 /* ---- POST /api/sheets/write ---- */
 if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $lockFp = null;
+    $requestId = bin2hex(random_bytes(4)); // ID unique pour tracer cette requête
+    
     try {
         requireGoogleUserAllowed($ALLOWED_EMAILS, $CLIENT_ID);
         if (!$SPREADSHEET_ID) {
@@ -354,6 +356,16 @@ if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === '
         $supplier  = trim((string)($body['supplier'] ?? ''));
         $dateISO   = (string)($body['dateISO'] ?? '');
         $total     = (float)($body['total'] ?? 0);
+        
+        logMessage('info', "📝 Write request received", [
+            'request_id' => $requestId,
+            'sheet' => $sheetName,
+            'who' => $who,
+            'supplier' => $supplier,
+            'date' => $dateISO,
+            'total' => $total
+        ]);
+        
         if (!$sheetName || !$who || !$supplier || !$dateISO) {
             throw new RuntimeException('Champs requis');
         }
@@ -365,12 +377,41 @@ if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === '
         $cols = ['label' => $colsArr[0], 'date' => $colsArr[1], 'total' => $colsArr[2]];
         $startRow = 11;
 
-        // ----- VERROU (évite collisions de ligne en écriture concurrente)
+        // ----- VERROU avec retry (évite collisions de ligne en écriture concurrente)
         $lockKey  = preg_replace('/[^a-z0-9_\-]/i', '_', $SPREADSHEET_ID . '_' . $sheetName . '_' . $who);
         $lockPath = sys_get_temp_dir() . "/gsheets_lock_{$lockKey}.lock";
-        $lockFp   = fopen($lockPath, 'c');
+        
+        logMessage('info', "🔒 Acquiring lock", [
+            'request_id' => $requestId,
+            'lock_path' => $lockPath
+        ]);
+        
+        $lockFp = fopen($lockPath, 'c');
         if ($lockFp) {
-            flock($lockFp, LOCK_EX);
+            // Attendre max 10 secondes pour obtenir le verrou
+            $lockAcquired = flock($lockFp, LOCK_EX | LOCK_NB);
+            $retries = 0;
+            while (!$lockAcquired && $retries < 50) { // 50 * 200ms = 10s max
+                usleep(200000); // 200ms
+                $lockAcquired = flock($lockFp, LOCK_EX | LOCK_NB);
+                $retries++;
+            }
+            
+            if (!$lockAcquired) {
+                logMessage('error', "❌ Failed to acquire lock after {$retries} retries", [
+                    'request_id' => $requestId
+                ]);
+                throw new RuntimeException('Unable to acquire lock - too many concurrent writes');
+            }
+            
+            logMessage('info', "✅ Lock acquired after {$retries} retries", [
+                'request_id' => $requestId
+            ]);
+        } else {
+            logMessage('warn', "⚠️ Could not create lock file", [
+                'request_id' => $requestId,
+                'lock_path' => $lockPath
+            ]);
         }
 
         $token = saToken(['https://www.googleapis.com/auth/spreadsheets']);
@@ -380,8 +421,19 @@ if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === '
         $getUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
             . rawurlencode($SPREADSHEET_ID)
             . '/values/' . rawurlencode($scanRange);
+        
+        logMessage('info', "📖 Reading sheet to find next empty row", [
+            'request_id' => $requestId,
+            'range' => $scanRange
+        ]);
+        
         $qr = http_json('GET', $getUrl, ['Authorization' => "Bearer $token", 'Accept' => 'application/json']);
         if ($qr['status'] < 200 || $qr['status'] >= 300) {
+            logMessage('error', "❌ Failed to read sheet", [
+                'request_id' => $requestId,
+                'status' => $qr['status'],
+                'response' => $qr['text']
+            ]);
             throw new RuntimeException($qr['text'] ?: 'Lecture feuille échouée');
         }
         $values = $qr['json']['values'] ?? [];
@@ -394,6 +446,12 @@ if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === '
             }
             $row = $startRow + $i + 1;
         }
+        
+        logMessage('info', "✅ Found next empty row", [
+            'request_id' => $requestId,
+            'row' => $row,
+            'scanned_rows' => count($values)
+        ]);
 
         // 2) préparer la date numérique (serial)
         $ymd = parse_date_ymd($dateISO);
@@ -411,6 +469,13 @@ if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === '
             . '/values/' . rawurlencode($putRange)
             . '?valueInputOption=RAW';
 
+        logMessage('info', "✍️ Writing to sheet", [
+            'request_id' => $requestId,
+            'range' => $putRange,
+            'row' => $row,
+            'values' => [$supplier, $dateValue, $total]
+        ]);
+
         $wr = http_json(
             'PUT',
             $updUrl,
@@ -422,8 +487,18 @@ if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === '
             ['values' => [[ $supplier, $dateValue, $total ]]]
         );
         if ($wr['status'] < 200 || $wr['status'] >= 300) {
+            logMessage('error', "❌ Failed to write to sheet", [
+                'request_id' => $requestId,
+                'status' => $wr['status'],
+                'response' => $wr['text']
+            ]);
             throw new RuntimeException($wr['text'] ?: 'Écriture échouée');
         }
+        
+        logMessage('info', "✅ Successfully wrote to sheet", [
+            'request_id' => $requestId,
+            'updated_cells' => $wr['json']['updatedCells'] ?? 'unknown'
+        ]);
 
         // 4) forcer le format Date sur la cellule de date (dd/mm/yyyy)
         $sheetId = get_sheet_id_by_title($SPREADSHEET_ID, $sheetName, $token);
@@ -462,17 +537,41 @@ if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === '
             $batchBody
         );
         if ($fmt['status'] < 200 || $fmt['status'] >= 300) {
-            throw new RuntimeException('Format date échoué: ' . $fmt['text']);
+            logMessage('warn', "⚠️ Failed to format date cell (non-critical)", [
+                'request_id' => $requestId,
+                'status' => $fmt['status'],
+                'response' => $fmt['text']
+            ]);
+            // Ne pas bloquer si le formatage échoue, les données sont déjà écrites
+        } else {
+            logMessage('info', "✅ Date formatting applied", [
+                'request_id' => $requestId
+            ]);
         }
+
+        logMessage('info', "🎉 Write request completed successfully", [
+            'request_id' => $requestId,
+            'sheet' => $sheetName,
+            'row' => $row,
+            'duration_ms' => (microtime(true) - ($_SERVER['REQUEST_TIME_FLOAT'] ?? 0)) * 1000
+        ]);
 
         echo json_encode(['ok' => true,'written' => ['sheet' => $sheetName,'row' => $row,'range' => $putRange]]);
     } catch (Throwable $e) {
+        logMessage('error', "❌ Write request failed", [
+            'request_id' => $requestId ?? 'unknown',
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
         http_response_code(500);
         echo json_encode(['ok' => false,'error' => $e->getMessage()]);
     } finally {
         if ($lockFp) {
             flock($lockFp, LOCK_UN);
             fclose($lockFp);
+            logMessage('info', "🔓 Lock released", [
+                'request_id' => $requestId ?? 'unknown'
+            ]);
         }
     }
     exit;
