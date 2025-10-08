@@ -39,6 +39,9 @@ RUN a2enmod rewrite headers ssl
 COPY infra/apache/000-default.conf /etc/apache2/sites-available/000-default.conf
 COPY infra/apache/security.conf /etc/apache2/conf-available/security.conf
 
+# Configuration du port 8080 pour Cloud Run
+RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf
+
 # Configuration de sécurité Apache globale
 RUN echo "ServerTokens Prod" >> /etc/apache2/apache2.conf && \
     echo "ServerSignature Off" >> /etc/apache2/apache2.conf
@@ -46,6 +49,7 @@ RUN echo "ServerTokens Prod" >> /etc/apache2/apache2.conf && \
 # Copie des fichiers de l'application
 COPY backend/ /var/www/html/
 COPY frontend/ /var/www/html/frontend/
+COPY .htaccess /var/www/html/.htaccess
 
 # Création du fichier de credentials (sera remplacé par les vraies credentials en production)
 RUN echo '{"type": "service_account", "project_id": "placeholder"}' > /tmp/credentials.json
