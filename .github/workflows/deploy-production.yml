@@ -1,8 +1,7 @@
 name: Deploy to Production
 
 on:
-  push:
-    branches: [ main ]
+  # Déclenchement manuel uniquement (pour éviter les coûts GitHub Actions)
   workflow_dispatch:
 
 jobs:

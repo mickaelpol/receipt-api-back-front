@@ -1,11 +1,10 @@
-# 🚀 Guide de Déploiement Automatique - Receipt API
+# 🚀 Guide de Déploiement - Receipt API
 
 ## 🎯 Principe simple
 
-**Push sur GitHub → Déploiement automatique sur Cloud Run**
+**Déploiement direct vers Cloud Run (sans GitHub Actions)**
 
-- Push sur `staging` → Déploiement staging automatique
-- Push sur `main` → Déploiement production automatique (avec approbation)
+Pour éviter les coûts GitHub Actions, le déploiement se fait directement depuis votre machine locale vers Cloud Run.
 
 ## 📋 Configuration initiale (À faire UNE SEULE FOIS)
 
@@ -51,9 +50,9 @@ gcloud secrets list --project=scan-document-ai
 
 ---
 
-## 🚀 Déploiement Automatique
+## 🚀 Déploiement Direct
 
-### **Déploiement Staging (automatique)**
+### **Déploiement vers Cloud Run (RECOMMANDÉ)**
 
 ```bash
 # 1. Faire vos modifications
@@ -62,54 +61,25 @@ gcloud secrets list --project=scan-document-ai
 # 2. Commit
 git add .
 git commit -m "feat: vos changements"
-
-# 3. Push sur staging → DÉPLOIEMENT AUTOMATIQUE
-git push origin staging
-```
-
-**Ce qui se passe automatiquement :**
-1. ✅ Cache-busting automatique
-2. ✅ Build Docker avec `infra/Dockerfile`
-3. ✅ Push vers Artifact Registry
-4. ✅ Déploiement sur Cloud Run (staging)
-5. ✅ Smoke tests automatiques
-6. ✅ Notification de succès/échec
-
-**Suivre le déploiement :**
-- GitHub Actions : `https://github.com/[votre-repo]/actions`
-- Cloud Build : Console GCP → Cloud Build
-- Logs Cloud Run : Console GCP → Cloud Run → receipt-parser → Logs
-
-### **Déploiement Production (automatique avec approbation)**
-
-```bash
-# 1. Vérifier que staging fonctionne
-# Tester l'URL de staging
-
-# 2. Merger staging vers main
-git checkout main
-git merge staging
-git commit -m "release: déploiement production"
-
-# 3. Push sur main → DÉPLOIEMENT AUTOMATIQUE (avec approbation)
 git push origin main
+
+# 3. Déployer directement vers Cloud Run
+make deploy-direct
 ```
 
-**Ce qui se passe automatiquement :**
+**Ce qui se passe :**
 1. ✅ Cache-busting automatique
-2. ✅ Build Docker avec `infra/Dockerfile`
-3. ✅ Push vers Artifact Registry
-4. ⏸️ **Attente d'approbation manuelle** (sécurité production)
-5. ✅ Après approbation : Déploiement sur Cloud Run (production)
-6. ✅ Smoke tests automatiques
-7. ✅ Notification de succès/échec
+2. ✅ Confirmation avant déploiement
+3. ✅ Build Docker via Cloud Build
+4. ✅ Push vers Artifact Registry
+5. ✅ Déploiement sur Cloud Run
+6. ✅ Tests automatiques après déploiement
 
-**Approuver le déploiement production :**
-1. Aller sur GitHub Actions : `https://github.com/[votre-repo]/actions`
-2. Cliquer sur le workflow "Deploy to Production"
-3. Cliquer sur **"Review deployments"**
-4. Cocher **"production"**
-5. Cliquer sur **"Approve and deploy"**
+**Avantages :**
+- ✅ Pas de coûts GitHub Actions
+- ✅ Déploiement direct depuis votre machine
+- ✅ Contrôle total sur le processus
+- ✅ Tests immédiats après déploiement
 
 ---
 

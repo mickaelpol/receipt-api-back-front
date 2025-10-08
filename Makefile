@@ -21,7 +21,7 @@ setup:
 	@echo "🚀 Ensuite lancez: make up"
 
 # ====== Cibles ======
-.PHONY: help up down restart ps logs install sh-app lint check-quality format build-assets cache-bust deploy-staging deploy-prod smoke-test smoke-test-staging smoke-test-prod check-deployment test-docker setup-gcp-secrets test-cloudbuild
+.PHONY: help up down restart ps logs install sh-app lint check-quality format build-assets cache-bust deploy-staging deploy-prod deploy-direct smoke-test smoke-test-staging smoke-test-prod check-deployment test-docker setup-gcp-secrets test-cloudbuild
 
 help:
 	@echo "📋 Commandes disponibles :"
@@ -41,8 +41,9 @@ help:
 	@echo "🚀 Build & Assets :"
 	@echo "  make build-assets   -> build des assets avec cache-busting"
 	@echo "  make cache-bust     -> cache-busting automatique (recommandé)"
-	@echo "  make deploy-staging -> déploiement staging avec cache-busting"
-	@echo "  make deploy-prod    -> déploiement production avec cache-busting"
+	@echo "  make deploy-direct  -> déploiement direct vers Cloud Run (RECOMMANDÉ)"
+	@echo "  make deploy-staging -> déploiement staging via GitHub Actions (manuel)"
+	@echo "  make deploy-prod    -> déploiement production via GitHub Actions (manuel)"
 	@echo ""
 	@echo "🧪 Tests :"
 	@echo "  make smoke-test    -> tests de smoke locaux"
@@ -143,6 +144,9 @@ check-deployment:
 
 test-docker:
 	@./scripts/test-docker-build.sh
+
+deploy-direct:
+	@./scripts/deploy-direct.sh
 
 
 # --- Assets ---
