@@ -85,7 +85,7 @@ if ($isLocalDev) {
     $allow = $origin && in_array($origin, $list, true) ? $origin : $list[0] ?? '*';
 } else {
     // En production, same-origin seulement
-    $allow = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? '');
+    $allow = detectProtocol() . '://' . ($_SERVER['HTTP_HOST'] ?? '');
 }
 
 header('Access-Control-Allow-Origin: ' . $allow);
@@ -280,8 +280,7 @@ if ($path === '/api/config' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') 
         'ok'              => true,
         'client_id'       => $CLIENT_ID,
         'default_sheet'   => $DEFAULT_SHEET,
-        'receipt_api_url' => (isset($_SERVER['HTTPS']) ? 'https' : 'http') .
-            '://' . $_SERVER['HTTP_HOST'] . '/api/scan',
+        'receipt_api_url' => detectProtocol() . '://' . $_SERVER['HTTP_HOST'] . '/api/scan',
         'who_options'     => array_keys($WHO_COLUMNS),
         'max_batch'       => $MAX_BATCH_UPLOADS,
     ];

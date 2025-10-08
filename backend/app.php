@@ -82,6 +82,30 @@ function maskSensitiveData($data)
 }
 
 /**
+ * Detect protocol (HTTP or HTTPS) with Cloud Run support
+ * @return string 'http' or 'https'
+ */
+function detectProtocol(): string {
+    // Check standard HTTPS variable
+    if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        return 'https';
+    }
+    
+    // Check X-Forwarded-Proto header (used by load balancers)
+    if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+        return 'https';
+    }
+    
+    // Cloud Run always uses HTTPS
+    if (isset($_SERVER['HTTP_HOST']) && strpos($_SERVER['HTTP_HOST'], 'run.app') !== false) {
+        return 'https';
+    }
+    
+    // Default to http for local development
+    return 'http';
+}
+
+/**
  * Validate WHO_COLUMNS format
  * @param string $whoColumns JSON string
  * @return bool True if valid
