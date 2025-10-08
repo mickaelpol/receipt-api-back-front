@@ -21,7 +21,7 @@ setup:
 	@echo "🚀 Ensuite lancez: make up"
 
 # ====== Cibles ======
-.PHONY: help up down restart ps logs install sh-app lint check-quality format build-assets cache-bust deploy-staging deploy-prod smoke-test smoke-test-staging smoke-test-prod
+.PHONY: help up down restart ps logs install sh-app lint check-quality format build-assets cache-bust deploy-staging deploy-prod smoke-test smoke-test-staging smoke-test-prod setup-gcp-secrets test-cloudbuild
 
 help:
 	@echo "📋 Commandes disponibles :"
@@ -48,11 +48,15 @@ help:
 	@echo "  make smoke-test    -> tests de smoke locaux"
 	@echo "  make smoke-test-staging -> tests de smoke sur staging"
 	@echo "  make smoke-test-prod -> tests de smoke sur production"
+	@echo "  make test-cloudbuild -> test du cloudbuild.yaml localement"
 	@echo ""
 	@echo "🔍 Qualité de code :"
 	@echo "  make lint          -> linter le code (JS + PHP)"
 	@echo "  make check-quality -> vérifier la qualité du code"
 	@echo "  make format        -> formater le code"
+	@echo ""
+	@echo "🔐 GCP Secrets :"
+	@echo "  make setup-gcp-secrets -> configurer les secrets dans GCP Secret Manager"
 
 # --- Docker Compose ---
 up:
@@ -149,3 +153,11 @@ deploy-staging:
 deploy-prod:
 	@echo "🚀 Déploiement production avec cache-busting..."
 	@./scripts/deploy-with-cache-bust.sh production
+
+setup-gcp-secrets:
+	@echo "🔐 Configuration des secrets dans GCP Secret Manager..."
+	@./scripts/setup-gcp-secrets.sh
+
+test-cloudbuild:
+	@echo "🧪 Test du cloudbuild.yaml localement..."
+	@./scripts/test-cloudbuild-locally.sh

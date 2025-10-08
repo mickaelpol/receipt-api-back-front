@@ -22,13 +22,23 @@ steps:
         echo "🔍 Running pre-build quality checks..."
         
         # Check if required files exist
-        if [ ! -f "Dockerfile" ]; then
-          echo "❌ Dockerfile not found"
+        if [ ! -f "infra/Dockerfile" ]; then
+          echo "❌ infra/Dockerfile not found"
           exit 1
         fi
         
         if [ ! -f "backend/composer.json" ]; then
-          echo "❌ composer.json not found"
+          echo "❌ backend/composer.json not found"
+          exit 1
+        fi
+        
+        if [ ! -f "frontend/index.html" ]; then
+          echo "❌ frontend/index.html not found"
+          exit 1
+        fi
+        
+        if [ ! -f ".htaccess" ]; then
+          echo "❌ .htaccess not found"
           exit 1
         fi
         
@@ -87,9 +97,9 @@ steps:
       - '--service-account'
       - 'docai-sa@scan-document-ai.iam.gserviceaccount.com'
       - '--set-env-vars'
-      - 'DEFAULT_SHEET=Sheet1,ALLOWED_EMAILS=your-email@gmail.com,GCP_LOCATION=eu,ALLOWED_ORIGINS=https://receipt-parser-HASH.a.run.app,WHO_COLUMNS=Qui:Mickael_Marie_Autre,MAX_BATCH_UPLOADS=10'
+      - 'APP_ENV=${_ENV},DEBUG=0,GCP_LOCATION=eu,DEFAULT_SHEET=Sheet1,MAX_BATCH_UPLOADS=10'
       - '--set-secrets'
-      - 'GOOGLE_OAUTH_CLIENT_ID=oauth-client-id:latest,SPREADSHEET_ID=spreadsheet-id:latest,GCP_PROJECT_ID=gcp-project-id:latest'
+      - 'GOOGLE_OAUTH_CLIENT_ID=oauth-client-id:latest,SPREADSHEET_ID=spreadsheet-id:latest,GCP_PROJECT_ID=gcp-project-id:latest,GCP_PROCESSOR_ID=gcp-processor-id:latest,ALLOWED_EMAILS=allowed-emails:latest,WHO_COLUMNS=who-columns:latest'
       - '--revision-suffix'
       - '${SHORT_SHA}'
     timeout: '600s'  # 10 minutes timeout
