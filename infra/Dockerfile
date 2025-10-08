@@ -47,12 +47,8 @@ RUN echo "ServerTokens Prod" >> /etc/apache2/apache2.conf && \
     echo "ServerSignature Off" >> /etc/apache2/apache2.conf
 
 # Copie des fichiers de l'application
-COPY backend/ /var/www/html/
-COPY frontend/ /var/www/html/frontend/
-COPY .htaccess /var/www/html/.htaccess
-
-# Création du fichier de credentials (sera remplacé par les vraies credentials en production)
-RUN echo '{"type": "service_account", "project_id": "placeholder"}' > /tmp/credentials.json
+# Copier d'abord le composer.json et composer.lock
+COPY backend/composer.json backend/composer.lock /var/www/html/
 
 # Installation de Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -60,6 +56,16 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Installation des dépendances PHP
 WORKDIR /var/www/html
 RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+# Copier ensuite le reste du backend (sans vendor qui est déjà installé)
+COPY backend/*.php /var/www/html/
+
+# Copier le frontend et .htaccess
+COPY frontend/ /var/www/html/frontend/
+COPY .htaccess /var/www/html/.htaccess
+
+# Création du fichier de credentials (sera remplacé par les vraies credentials en production)
+RUN echo '{"type": "service_account", "project_id": "placeholder"}' > /tmp/credentials.json
 
 # Configuration des permissions
 RUN chown -R www-data:www-data /var/www/html \

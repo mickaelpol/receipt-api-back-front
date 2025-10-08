@@ -100,6 +100,9 @@ steps:
       - 'APP_ENV=${_ENV},DEBUG=0,GCP_LOCATION=eu,DEFAULT_SHEET=Sheet1,MAX_BATCH_UPLOADS=10'
       - '--set-secrets'
       - 'GOOGLE_OAUTH_CLIENT_ID=oauth-client-id:latest,SPREADSHEET_ID=spreadsheet-id:latest,GCP_PROJECT_ID=gcp-project-id:latest,GCP_PROCESSOR_ID=gcp-processor-id:latest,ALLOWED_EMAILS=allowed-emails:latest,WHO_COLUMNS=who-columns:latest'
+      - '--timeout'
+      - '300'
+      - '--no-cpu-throttling'
       - '--revision-suffix'
       - '${SHORT_SHA}'
     timeout: '600s'  # 10 minutes timeout

@@ -1,0 +1,55 @@
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+README.md
+DEPLOYMENT_GUIDE.md
+SECURITY.md
+PRODUCTION_CHECKLIST.md
+QUICK_START.md
+*.md
+
+# Node modules (si présent)
+node_modules
+npm-debug.log
+
+# PHP
+backend/vendor
+backend/keys/*.json
+*.log
+
+# Docker
+.dockerignore
+Dockerfile
+docker-compose.yml
+infra/docker-compose.yml
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Temporaires
+tmp
+temp
+*.tmp
+
+# Scripts (sauf ceux nécessaires)
+scripts/
+
+# Tests
+tests/
+*.test.php
+
