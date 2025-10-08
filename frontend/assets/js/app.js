@@ -493,6 +493,27 @@ function clearAnalysisStatus() {
     setAnalysisStatus('');
 }
 
+/**
+ * Afficher un message de statut pour le multi-scan
+ */
+function setMultiAnalysisStatus(message, color = '#666') {
+    const multiStatusDiv = document.getElementById('multiAnalysisStatus');
+    if (multiStatusDiv) {
+        multiStatusDiv.style.backgroundColor = color + '20'; // 20 = opacity en hex
+        multiStatusDiv.style.color = color;
+        multiStatusDiv.style.borderLeft = `4px solid ${color}`;
+        multiStatusDiv.textContent = message;
+        multiStatusDiv.style.display = message ? 'block' : 'none';
+    }
+}
+
+/**
+ * Effacer le message d'analyse multi
+ */
+function clearMultiAnalysisStatus() {
+    setMultiAnalysisStatus('');
+}
+
 function clearSheetsSelect(placeholder = '') {
     const sel = $('#sheetSelect');
     if (!sel) return;
@@ -1346,6 +1367,7 @@ function clearMulti() {
     multiItems = [];
     const wrap = $('#multiCards');
     if (wrap) wrap.innerHTML = '';
+    clearMultiAnalysisStatus(); // Effacer le statut
     renderMultiEmptyIfNeeded();
     updateBatchButtons();
 }
@@ -1412,7 +1434,7 @@ async function runBatchScan() {
 
         // Afficher le statut initial
         const totalItems = multiItems.length;
-        setAnalysisStatus(`Analyse de ${totalItems} ticket(s)...`, '#007bff');
+        setMultiAnalysisStatus(`Analyse de ${totalItems} ticket(s)...`, '#007bff');
 
         let scannedCount = 0;
         let errorCount = 0;
@@ -1423,7 +1445,7 @@ async function runBatchScan() {
             if (card) renderCard(it);
 
             // Mise à jour du statut : analyse en cours
-            setAnalysisStatus(`Analyse ${idx + 1}/${totalItems}...`, '#007bff');
+            setMultiAnalysisStatus(`Analyse ${idx + 1}/${totalItems}...`, '#007bff');
 
             const b64 = await encodeForDocAI(it.file);
             const resp = await fetch(`${BACK_BASE}/api/scan`, {
@@ -1444,7 +1466,7 @@ async function runBatchScan() {
             renderCard(it);
 
             // Mise à jour du statut : ticket analysé
-            setAnalysisStatus(`✓ ${idx + 1}/${totalItems} : ${it.supplier || 'Ticket'} analysé`, '#28a745');
+            setMultiAnalysisStatus(`✓ ${idx + 1}/${totalItems} : ${it.supplier || 'Ticket'} analysé`, '#28a745');
 
             return { ok: true };
         };
@@ -1453,9 +1475,9 @@ async function runBatchScan() {
 
         // Statut final de l'analyse
         if (errorCount === 0) {
-            setAnalysisStatus(`✔ Analyse terminée : ${scannedCount}/${totalItems} ticket(s) analysé(s)`, '#28a745');
+            setMultiAnalysisStatus(`✔ Analyse terminée : ${scannedCount}/${totalItems} ticket(s) analysé(s)`, '#28a745');
         } else {
-            setAnalysisStatus(`⚠ Analyse terminée : ${scannedCount} réussi(s), ${errorCount} erreur(s)`, '#ff8c00');
+            setMultiAnalysisStatus(`⚠ Analyse terminée : ${scannedCount} réussi(s), ${errorCount} erreur(s)`, '#ff8c00');
         }
 
     } catch {
@@ -1465,7 +1487,7 @@ async function runBatchScan() {
                 renderCard(it);
             }
         });
-        setAnalysisStatus('Erreur lors de l\'analyse multiple', '#dc3545');
+        setMultiAnalysisStatus('Erreur lors de l\'analyse multiple', '#dc3545');
     } finally {
         updateBatchButtons();
     }
@@ -1498,14 +1520,14 @@ async function runBatchSave() {
         if (!rows.length) throw new Error('Aucune carte complète à enregistrer.');
 
         // Afficher le statut initial
-        setAnalysisStatus(`Enregistrement de ${rows.length} ticket(s)...`, '#007bff');
+        setMultiAnalysisStatus(`Enregistrement de ${rows.length} ticket(s)...`, '#007bff');
 
         let successCount = 0;
         let errorCount = 0;
 
         const writer = async (r, idx) => {
             // Mise à jour du statut : ticket en cours
-            setAnalysisStatus(`Écriture ${idx + 1}/${rows.length} : ${r.supplier}...`, '#007bff');
+            setMultiAnalysisStatus(`Écriture ${idx + 1}/${rows.length} : ${r.supplier}...`, '#007bff');
 
             // Délai aléatoire pour éviter les collisions (100-300ms)
             // Chaque ticket attend un peu plus que le précédent
@@ -1530,7 +1552,7 @@ async function runBatchSave() {
                         badge.classList.add('status-ok');
                     }
                     // Mise à jour du statut : ticket enregistré
-                    setAnalysisStatus(`✓ ${idx + 1}/${rows.length} : ${r.supplier} enregistré`, '#28a745');
+                    setMultiAnalysisStatus(`✓ ${idx + 1}/${rows.length} : ${r.supplier} enregistré`, '#28a745');
                 } else {
                     errorCount++;
                     if (badge) {
@@ -1539,7 +1561,7 @@ async function runBatchSave() {
                         badge.classList.add('status-error');
                     }
                     // Mise à jour du statut : erreur
-                    setAnalysisStatus(`✗ ${idx + 1}/${rows.length} : ${r.supplier} - erreur`, '#dc3545');
+                    setMultiAnalysisStatus(`✗ ${idx + 1}/${rows.length} : ${r.supplier} - erreur`, '#dc3545');
                 }
             }
             return res.ok;
@@ -1550,15 +1572,15 @@ async function runBatchSave() {
 
         // Statut final
         if (errorCount === 0) {
-            setAnalysisStatus(`✔ Enregistrement terminé : ${successCount}/${rows.length} ticket(s) enregistré(s) (onglet « ${sheetName} », ${who})`, '#28a745');
+            setMultiAnalysisStatus(`✔ Enregistrement terminé : ${successCount}/${rows.length} ticket(s) enregistré(s) (onglet « ${sheetName} », ${who})`, '#28a745');
         } else if (successCount === 0) {
-            setAnalysisStatus(`✗ Échec : ${errorCount}/${rows.length} ticket(s) en erreur`, '#dc3545');
+            setMultiAnalysisStatus(`✗ Échec : ${errorCount}/${rows.length} ticket(s) en erreur`, '#dc3545');
         } else {
-            setAnalysisStatus(`⚠ Terminé : ${successCount} réussi(s), ${errorCount} erreur(s)`, '#ff8c00');
+            setMultiAnalysisStatus(`⚠ Terminé : ${successCount} réussi(s), ${errorCount} erreur(s)`, '#ff8c00');
         }
 
     } catch (e) {
-        setAnalysisStatus('Erreur enregistrement multiple : ' + (e.message || e), '#dc3545');
+        setMultiAnalysisStatus('Erreur enregistrement multiple : ' + (e.message || e), '#dc3545');
     }
 }
 
