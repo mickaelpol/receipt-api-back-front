@@ -1,0 +1,161 @@
+#!/bin/bash
+
+# Git hook pre-push : Vérifications avant push
+# Bloque le push si les tests échouent
+
+set -e
+
+echo "🚀 Pre-push checks..."
+echo ""
+
+# Couleurs
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+FAILED=0
+
+# Récupérer la branche cible
+while read local_ref local_sha remote_ref remote_sha
+do
+    BRANCH=$(echo $remote_ref | sed 's|refs/heads/||')
+    echo -e "${BLUE}📌 Push vers la branche: $BRANCH${NC}"
+    echo ""
+done
+
+# 1. Tests PHP (si PHPCS est configuré)
+if [ -f "backend/vendor/bin/phpcs" ] && [ -f "phpcs.xml" ]; then
+    echo "🧪 Tests PHPCS..."
+    if ./backend/vendor/bin/phpcs --standard=phpcs.xml backend/ 2>&1 | grep -v "^$"; then
+        echo -e "${GREEN}✅ PHPCS OK${NC}"
+    else
+        if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            echo -e "${RED}❌ PHPCS échoué${NC}"
+            echo "Corrigez avec: ./backend/vendor/bin/phpcbf --standard=phpcs.xml backend/"
+            FAILED=1
+        fi
+    fi
+    echo ""
+fi
+
+# 2. Vérifier que les dépendances sont à jour
+echo "📦 Vérification des dépendances..."
+
+# Vérifier composer.lock
+if [ -f "backend/composer.json" ]; then
+    if git diff --name-only HEAD~1..HEAD | grep -q "backend/composer.json"; then
+        if ! git diff --name-only HEAD~1..HEAD | grep -q "backend/composer.lock"; then
+            echo -e "${YELLOW}⚠️  Warning: composer.json modifié mais pas composer.lock${NC}"
+            echo "Lancez: cd backend && composer update"
+        fi
+    fi
+fi
+
+echo -e "${GREEN}✅ Dépendances OK${NC}"
+echo ""
+
+# 3. Vérifier la configuration Docker
+echo "🐳 Vérification Docker..."
+
+if [ -f "infra/Dockerfile" ]; then
+    # Vérifier que le Dockerfile est valide
+    if ! grep -q "FROM php:8.1-apache" infra/Dockerfile; then
+        echo -e "${RED}❌ Dockerfile invalide (FROM manquant)${NC}"
+        FAILED=1
+    fi
+    
+    # Vérifier que .htaccess est copié
+    if ! grep -q "COPY .htaccess" infra/Dockerfile; then
+        echo -e "${YELLOW}⚠️  Warning: .htaccess pas copié dans Dockerfile${NC}"
+    fi
+    
+    echo -e "${GREEN}✅ Docker OK${NC}"
+else
+    echo -e "${YELLOW}⚠️  Dockerfile non trouvé${NC}"
+fi
+echo ""
+
+# 4. Vérifier cloudbuild.yaml
+echo "☁️  Vérification Cloud Build..."
+
+if [ -f "cloudbuild.yaml" ]; then
+    # Vérifier que le fichier est valide YAML
+    if command -v python3 &> /dev/null; then
+        python3 -c "import yaml; yaml.safe_load(open('cloudbuild.yaml'))" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✅ cloudbuild.yaml valide${NC}"
+        else
+            echo -e "${RED}❌ cloudbuild.yaml invalide${NC}"
+            FAILED=1
+        fi
+    fi
+else
+    echo -e "${YELLOW}⚠️  cloudbuild.yaml non trouvé${NC}"
+fi
+echo ""
+
+# 5. Avertissement si push vers main
+if [ "$BRANCH" = "main" ]; then
+    echo -e "${YELLOW}╔════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${YELLOW}║  ⚠️  ATTENTION: Push vers MAIN                        ║${NC}"
+    echo -e "${YELLOW}║                                                        ║${NC}"
+    echo -e "${YELLOW}║  Cela va déclencher le déploiement sur Cloud Run !   ║${NC}"
+    echo -e "${YELLOW}║                                                        ║${NC}"
+    echo -e "${YELLOW}║  Assurez-vous que:                                    ║${NC}"
+    echo -e "${YELLOW}║  • Les tests locaux passent                           ║${NC}"
+    echo -e "${YELLOW}║  • Le code a été testé en local                       ║${NC}"
+    echo -e "${YELLOW}║  • make smoke-test fonctionne                         ║${NC}"
+    echo -e "${YELLOW}╚════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    # Demander confirmation
+    read -p "Voulez-vous vraiment déployer en production ? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${RED}❌ Push annulé${NC}"
+        exit 1
+    fi
+    echo ""
+fi
+
+# 6. Tests de smoke locaux (optionnel mais recommandé)
+if [ "$BRANCH" = "main" ]; then
+    echo "🧪 Tests de smoke recommandés..."
+    echo "Voulez-vous lancer 'make smoke-test' maintenant ? (y/N)"
+    read -p "> " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if make smoke-test; then
+            echo -e "${GREEN}✅ Smoke tests OK${NC}"
+        else
+            echo -e "${RED}❌ Smoke tests échoués${NC}"
+            FAILED=1
+        fi
+    else
+        echo -e "${YELLOW}⚠️  Smoke tests sautés (à vos risques et périls)${NC}"
+    fi
+    echo ""
+fi
+
+# Résultat final
+if [ $FAILED -eq 1 ]; then
+    echo ""
+    echo -e "${RED}╔════════════════════════════════════════╗${NC}"
+    echo -e "${RED}║  ❌ PRE-PUSH CHECKS FAILED            ║${NC}"
+    echo -e "${RED}║  Corrigez les erreurs ci-dessus       ║${NC}"
+    echo -e "${RED}╚════════════════════════════════════════╝${NC}"
+    echo ""
+    echo "Pour bypasser (déconseillé): git push --no-verify"
+    exit 1
+fi
+
+echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║  ✅ ALL PRE-PUSH CHECKS PASSED        ║${NC}"
+echo -e "${GREEN}║  🚀 Push autorisé                     ║${NC}"
+echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
+echo ""
+
+exit 0
+

@@ -21,13 +21,15 @@ setup:
 	@echo "🚀 Ensuite lancez: make up"
 
 # ====== Cibles ======
-.PHONY: help up down restart ps logs install sh-app lint check-quality format build-assets cache-bust deploy-staging deploy-prod deploy-direct smoke-test smoke-test-staging smoke-test-prod check-deployment test-docker setup-gcp-secrets test-cloudbuild
+.PHONY: help up down restart ps logs install sh-app lint check-quality format build-assets cache-bust deploy-staging deploy-prod deploy-direct smoke-test smoke-test-staging smoke-test-prod check-deployment test-docker install-hooks setup-gcp-secrets test-cloudbuild
 
 help:
 	@echo "📋 Commandes disponibles :"
 	@echo ""
 	@echo "🔧 Configuration :"
 	@echo "  make setup         -> configuration initiale (.env, structure)"
+	@echo "  make install-hooks -> installer les Git hooks (pre-commit, pre-push)"
+	@echo "  make setup-gcp-secrets -> configurer les secrets dans GCP Secret Manager"
 	@echo ""
 	@echo "🐳 Docker :"
 	@echo "  make up            -> démarrer les containers en arrière-plan"
@@ -147,6 +149,9 @@ test-docker:
 
 deploy-direct:
 	@./scripts/deploy-direct.sh
+
+install-hooks:
+	@./scripts/install-git-hooks.sh
 
 
 # --- Assets ---
