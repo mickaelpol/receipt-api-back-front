@@ -1410,10 +1410,20 @@ async function runBatchScan() {
         if (!accessToken) await ensureConnected(false);
         await api('/api/auth/me');
 
-        const worker = async (it) => {
+        // Afficher le statut initial
+        const totalItems = multiItems.length;
+        setAnalysisStatus(`Analyse de ${totalItems} ticket(s)...`, '#007bff');
+
+        let scannedCount = 0;
+        let errorCount = 0;
+
+        const worker = async (it, idx) => {
             const card = document.getElementById(it.id);
             it.status = 'Analyse…';
             if (card) renderCard(it);
+
+            // Mise à jour du statut : analyse en cours
+            setAnalysisStatus(`Analyse ${idx + 1}/${totalItems}...`, '#007bff');
 
             const b64 = await encodeForDocAI(it.file);
             const resp = await fetch(`${BACK_BASE}/api/scan`, {
@@ -1422,16 +1432,31 @@ async function runBatchScan() {
                 body: JSON.stringify({ imageBase64: b64 })
             });
             const json = await resp.json();
-            if (!resp.ok || json.ok === false) throw new Error(json.error || `HTTP ${resp.status}`);
+            if (!resp.ok || json.ok === false) {
+                errorCount++;
+                throw new Error(json.error || `HTTP ${resp.status}`);
+            }
             it.supplier = json.supplier_name || '';
             it.dateISO = json.receipt_date || '';
             it.total = (json.total_amount != null) ? Number(json.total_amount) : null;
             it.status = 'OK';
+            scannedCount++;
             renderCard(it);
+
+            // Mise à jour du statut : ticket analysé
+            setAnalysisStatus(`✓ ${idx + 1}/${totalItems} : ${it.supplier || 'Ticket'} analysé`, '#28a745');
+
             return { ok: true };
         };
 
         await runWithConcurrency(multiItems, worker, 3);
+
+        // Statut final de l'analyse
+        if (errorCount === 0) {
+            setAnalysisStatus(`✔ Analyse terminée : ${scannedCount}/${totalItems} ticket(s) analysé(s)`, '#28a745');
+        } else {
+            setAnalysisStatus(`⚠ Analyse terminée : ${scannedCount} réussi(s), ${errorCount} erreur(s)`, '#ff8c00');
+        }
 
     } catch {
         multiItems.forEach(it => {
@@ -1440,6 +1465,7 @@ async function runBatchScan() {
                 renderCard(it);
             }
         });
+        setAnalysisStatus('Erreur lors de l\'analyse multiple', '#dc3545');
     } finally {
         updateBatchButtons();
     }
@@ -1471,7 +1497,16 @@ async function runBatchSave() {
 
         if (!rows.length) throw new Error('Aucune carte complète à enregistrer.');
 
+        // Afficher le statut initial
+        setAnalysisStatus(`Enregistrement de ${rows.length} ticket(s)...`, '#007bff');
+
+        let successCount = 0;
+        let errorCount = 0;
+
         const writer = async (r, idx) => {
+            // Mise à jour du statut : ticket en cours
+            setAnalysisStatus(`Écriture ${idx + 1}/${rows.length} : ${r.supplier}...`, '#007bff');
+
             // Délai aléatoire pour éviter les collisions (100-300ms)
             // Chaque ticket attend un peu plus que le précédent
             const baseDelay = idx * 100; // Espacement de base
@@ -1488,17 +1523,23 @@ async function runBatchSave() {
             if (card) {
                 const badge = card.querySelector('.status-badge');
                 if (res.ok) {
+                    successCount++;
                     if (badge) {
                         badge.textContent = 'Enregistré ✔';
                         badge.classList.remove('status-analyse', 'status-error');
                         badge.classList.add('status-ok');
                     }
+                    // Mise à jour du statut : ticket enregistré
+                    setAnalysisStatus(`✓ ${idx + 1}/${rows.length} : ${r.supplier} enregistré`, '#28a745');
                 } else {
+                    errorCount++;
                     if (badge) {
                         badge.textContent = 'Erreur écriture';
                         badge.classList.remove('status-analyse', 'status-ok');
                         badge.classList.add('status-error');
                     }
+                    // Mise à jour du statut : erreur
+                    setAnalysisStatus(`✗ ${idx + 1}/${rows.length} : ${r.supplier} - erreur`, '#dc3545');
                 }
             }
             return res.ok;
@@ -1506,7 +1547,15 @@ async function runBatchSave() {
 
         // Réduire la concurrence à 1 pour garantir l'ordre
         await runWithConcurrency(rows, writer, 1);
-        setAnalysisStatus(`Enregistrement terminé (${rows.length} lignes).`, '#28a745');
+
+        // Statut final
+        if (errorCount === 0) {
+            setAnalysisStatus(`✔ Enregistrement terminé : ${successCount}/${rows.length} ticket(s) enregistré(s) (onglet « ${sheetName} », ${who})`, '#28a745');
+        } else if (successCount === 0) {
+            setAnalysisStatus(`✗ Échec : ${errorCount}/${rows.length} ticket(s) en erreur`, '#dc3545');
+        } else {
+            setAnalysisStatus(`⚠ Terminé : ${successCount} réussi(s), ${errorCount} erreur(s)`, '#ff8c00');
+        }
 
     } catch (e) {
         setAnalysisStatus('Erreur enregistrement multiple : ' + (e.message || e), '#dc3545');
