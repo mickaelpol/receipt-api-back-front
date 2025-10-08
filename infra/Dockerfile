@@ -55,14 +55,15 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Installation des dépendances PHP
 WORKDIR /var/www/html
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+RUN composer update --optimize-autoloader --no-interaction
 
 # Copier ensuite le reste du backend (sans vendor qui est déjà installé)
 COPY backend/*.php /var/www/html/
 
-# Copier le frontend et .htaccess
+# Copier le frontend, .htaccess et phpcs.xml
 COPY frontend/ /var/www/html/frontend/
 COPY .htaccess /var/www/html/.htaccess
+COPY phpcs.xml /var/www/html/phpcs.xml
 
 # Création du fichier de credentials (sera remplacé par les vraies credentials en production)
 RUN echo '{"type": "service_account", "project_id": "placeholder"}' > /tmp/credentials.json
