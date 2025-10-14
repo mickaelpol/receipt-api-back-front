@@ -7,7 +7,7 @@
  * - Images: Cache with size limit
  */
 
-const CACHE_VERSION = 'v6'; // Fix PWA update detection + add SKIP_WAITING handler
+const CACHE_VERSION = 'v7'; // Fix PWA update detection + add SKIP_WAITING handler
 const STATIC_CACHE = `scan2sheet-static-${CACHE_VERSION}`;
 const API_CACHE = `scan2sheet-api-${CACHE_VERSION}`;
 const IMAGE_CACHE = `scan2sheet-images-${CACHE_VERSION}`;
