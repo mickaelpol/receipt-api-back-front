@@ -7,7 +7,7 @@
  * - Images: Cache with size limit
  */
 
-const CACHE_VERSION = 'v8'; // Test notification on mobile
+const CACHE_VERSION = 'v1.0.0'; // First stable release with label aggregation
 const STATIC_CACHE = `scan2sheet-static-${CACHE_VERSION}`;
 const API_CACHE = `scan2sheet-api-${CACHE_VERSION}`;
 const IMAGE_CACHE = `scan2sheet-images-${CACHE_VERSION}`;
