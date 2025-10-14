@@ -403,8 +403,8 @@ if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === '
 
         $token = saToken(['https://www.googleapis.com/auth/spreadsheets']);
 
-        // Use optimistic locking instead of file-based locking
-        $result = writeToSheetOptimistic(
+        // Use aggregation with label detection and incremental formulas
+        $result = writeToSheetWithAggregation(
             $SPREADSHEET_ID,
             $sheetName,
             $cols,

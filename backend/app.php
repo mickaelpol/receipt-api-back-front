@@ -1176,3 +1176,528 @@ function cleanupDocAiCache(int $maxAge = 86400): int
 
     return $cleaned;
 }
+
+/**
+ * US2: Normalize label for comparison
+ * Normalizes by:
+ * - Trimming whitespace
+ * - Converting to lowercase
+ * - Removing accents
+ * - Removing punctuation
+ * - Reducing multiple spaces to single space
+ *
+ * @param string $label Input label
+ * @return string Normalized label
+ */
+function normalizeLabel(string $label): string
+{
+    // Trim whitespace
+    $label = trim($label);
+
+    // Convert to lowercase
+    $label = mb_strtolower($label, 'UTF-8');
+
+    // Remove accents (convert to ASCII)
+    $label = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $label);
+
+    // Remove punctuation and special characters (keep only letters, numbers, spaces)
+    $label = preg_replace('/[^a-z0-9\s]/i', '', $label);
+
+    // Reduce multiple spaces to single space
+    $label = preg_replace('/\s+/', ' ', $label);
+
+    // Final trim
+    $label = trim($label);
+
+    return $label;
+}
+
+/**
+ * US7: Validate and format amount
+ * Ensures amount is:
+ * - In EUR
+ * - Non-negative
+ * - Formatted with 2 decimals
+ * - Uses comma as decimal separator (for Google Sheets formula compatibility)
+ *
+ * @param float $amount Amount to validate and format
+ * @return string Formatted amount with comma decimal separator
+ * @throws RuntimeException If amount is invalid
+ */
+function validateAndFormatAmount(float $amount): string
+{
+    // Validate non-negative
+    if ($amount < 0) {
+        throw new RuntimeException('Amount must be non-negative');
+    }
+
+    // Format with 2 decimals and comma separator
+    // Use number_format first to get 2 decimals, then replace . with ,
+    $formatted = number_format($amount, 2, '.', '');
+    $formatted = str_replace('.', ',', $formatted);
+
+    return $formatted;
+}
+
+/**
+ * US3 & US6: Find existing label row or determine if label can be created
+ * Returns the row number if label exists, or null if label doesn't exist
+ * Also checks for single label per tab constraint (US6)
+ *
+ * @param string $spreadsheetId Spreadsheet ID
+ * @param string $sheetName Sheet name
+ * @param string $column Column letter for labels
+ * @param int $startRow Starting row number
+ * @param string $label Label to find (will be normalized internally)
+ * @param string $token Access token
+ * @return array ['row' => int|null, 'existing_label' => string|null, 'can_create' => bool, 'error' => string|null]
+ */
+function findLabelRow(
+    string $spreadsheetId,
+    string $sheetName,
+    string $column,
+    int $startRow,
+    string $label,
+    string $token
+): array {
+    $normalizedLabel = normalizeLabel($label);
+
+    $scanRange = sprintf('%s!%s%d:%s', $sheetName, $column, $startRow, $column);
+    $getUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
+        . rawurlencode($spreadsheetId)
+        . '/values/' . rawurlencode($scanRange);
+
+    $qr = http_json('GET', $getUrl, ['Authorization' => "Bearer $token", 'Accept' => 'application/json']);
+
+    if ($qr['status'] < 200 || $qr['status'] >= 300) {
+        throw new RuntimeException('Failed to read sheet: ' . ($qr['text'] ?? 'Unknown error'));
+    }
+
+    $values = $qr['json']['values'] ?? [];
+
+    // Track if we found any label in the sheet
+    $existingLabel = null;
+    $existingNormalizedLabel = null;
+    $foundRow = null;
+
+    foreach ($values as $i => $row) {
+        $cellValue = isset($row[0]) ? trim((string)$row[0]) : '';
+
+        if ($cellValue === '') {
+            continue; // Skip empty rows
+        }
+
+        $normalizedCellValue = normalizeLabel($cellValue);
+
+        // Store first non-empty label found
+        if ($existingLabel === null) {
+            $existingLabel = $cellValue;
+            $existingNormalizedLabel = $normalizedCellValue;
+        }
+
+        // Check if this matches our label
+        if ($normalizedCellValue === $normalizedLabel) {
+            $foundRow = $startRow + $i;
+            break;
+        }
+    }
+
+    // US6: Check single label per tab constraint
+    if ($foundRow === null && $existingNormalizedLabel !== null && $existingNormalizedLabel !== $normalizedLabel) {
+        // We have a different label in the sheet, and we're trying to add a new one
+        return [
+            'row' => null,
+            'existing_label' => $existingLabel,
+            'can_create' => false,
+            'error' => "Un seul libellé autorisé par onglet. Libellé existant: '{$existingLabel}'"
+        ];
+    }
+
+    // If we found the label, return the row
+    if ($foundRow !== null) {
+        return [
+            'row' => $foundRow,
+            'existing_label' => $existingLabel,
+            'can_create' => true,
+            'error' => null
+        ];
+    }
+
+    // Label doesn't exist yet, and we can create it
+    // Find next empty row for new label
+    $nextEmptyRow = $startRow + count($values);
+
+    return [
+        'row' => $nextEmptyRow,
+        'existing_label' => null,
+        'can_create' => true,
+        'error' => null
+    ];
+}
+
+/**
+ * US4: Get current formula value from a cell and create incremental formula
+ * If cell is empty, returns "=amount"
+ * If cell contains a formula (starts with =), appends "+amount"
+ * If cell contains a number, converts to formula "=number+amount"
+ *
+ * @param string $spreadsheetId Spreadsheet ID
+ * @param string $sheetName Sheet name
+ * @param string $column Column letter
+ * @param int $row Row number
+ * @param float $newAmount New amount to add
+ * @param string $token Access token
+ * @return string New formula to write
+ */
+function createIncrementalFormula(
+    string $spreadsheetId,
+    string $sheetName,
+    string $column,
+    int $row,
+    float $newAmount,
+    string $token
+): string {
+    // Format the new amount with comma decimal separator
+    $formattedAmount = validateAndFormatAmount($newAmount);
+
+    // Read current cell value
+    $cellRange = sprintf('%s!%s%d', $sheetName, $column, $row);
+    $getUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
+        . rawurlencode($spreadsheetId)
+        . '/values/' . rawurlencode($cellRange)
+        . '?valueRenderOption=FORMULA'; // Important: get formula, not computed value
+
+    $qr = http_json('GET', $getUrl, ['Authorization' => "Bearer $token", 'Accept' => 'application/json']);
+
+    if ($qr['status'] < 200 || $qr['status'] >= 300) {
+        throw new RuntimeException('Failed to read cell: ' . ($qr['text'] ?? 'Unknown error'));
+    }
+
+    $values = $qr['json']['values'] ?? [];
+    $currentValue = isset($values[0][0]) ? trim((string)$values[0][0]) : '';
+
+    // Case 1: Cell is empty
+    if ($currentValue === '') {
+        return '=' . $formattedAmount;
+    }
+
+    // Case 2: Cell contains a formula (starts with =)
+    if (str_starts_with($currentValue, '=')) {
+        // Append the new amount to the existing formula
+        return $currentValue . '+' . $formattedAmount;
+    }
+
+    // Case 3: Cell contains a number (convert to formula)
+    // First, try to parse the number
+    $numValue = str_replace(',', '.', $currentValue); // Convert comma to dot for parsing
+    if (is_numeric($numValue)) {
+        $formatted = validateAndFormatAmount((float)$numValue);
+        return '=' . $formatted . '+' . $formattedAmount;
+    }
+
+    // Case 4: Cell contains something else (shouldn't happen, but treat as 0)
+    logMessage('warn', 'Unexpected cell value, treating as 0', [
+        'cell' => $cellRange,
+        'value' => $currentValue
+    ]);
+    return '=' . $formattedAmount;
+}
+
+/**
+ * US1-US9: Write to Google Sheets with label aggregation and incremental formulas
+ * This function implements all the user stories for label detection and aggregation:
+ * - US1: Tab selection and column mapping via WHO_COLUMNS
+ * - US2: Label normalization
+ * - US3: Unique line per label
+ * - US4: Incremental aggregation with formula
+ * - US5: Triggered on write
+ * - US6: Single label per tab constraint
+ * - US7: Amount validation and formatting
+ * - US8: Retry logic for transient errors (with optimistic locking)
+ * - US9: Batch write performance (handled at caller level)
+ *
+ * @param string $spreadsheetId Spreadsheet ID
+ * @param string $sheetName Sheet name
+ * @param array $cols Column mapping ['label' => 'K', 'date' => 'L', 'total' => 'M']
+ * @param int $startRow Starting row for searching labels
+ * @param string $supplier Supplier name (label)
+ * @param string $dateISO Date in ISO format
+ * @param float $total Total amount
+ * @param string $token Access token
+ * @param int $maxRetries Maximum number of retries (default: 5)
+ * @return array Write result with row information
+ * @throws RuntimeException If write fails after max retries or constraint violated
+ */
+function writeToSheetWithAggregation(
+    string $spreadsheetId,
+    string $sheetName,
+    array $cols,
+    int $startRow,
+    string $supplier,
+    string $dateISO,
+    float $total,
+    string $token,
+    int $maxRetries = 5
+): array {
+    $requestId = bin2hex(random_bytes(4));
+
+    // US7: Validate amount first
+    try {
+        validateAndFormatAmount($total);
+    } catch (RuntimeException $e) {
+        throw new RuntimeException('Invalid amount: ' . $e->getMessage());
+    }
+
+    for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+        try {
+            logMessage('info', "📝 Aggregation write attempt #{$attempt}", [
+                'request_id' => $requestId,
+                'sheet' => $sheetName,
+                'supplier' => $supplier,
+                'amount' => $total,
+                'attempt' => $attempt,
+                'max_retries' => $maxRetries
+            ]);
+
+            // US3 & US6: Find existing label row or validate new label can be created
+            $labelResult = findLabelRow(
+                $spreadsheetId,
+                $sheetName,
+                $cols['label'],
+                $startRow,
+                $supplier,
+                $token
+            );
+
+            if (!$labelResult['can_create']) {
+                // US6: Single label per tab constraint violated
+                throw new RuntimeException($labelResult['error']);
+            }
+
+            $row = $labelResult['row'];
+            $isNewLabel = $labelResult['existing_label'] === null;
+
+            logMessage('info', $isNewLabel ? "✨ Creating new label" : "🔄 Updating existing label", [
+                'request_id' => $requestId,
+                'row' => $row,
+                'label' => $supplier,
+                'normalized' => normalizeLabel($supplier),
+                'is_new' => $isNewLabel,
+                'attempt' => $attempt
+            ]);
+
+            // Prepare date value
+            $ymd = parse_date_ymd($dateISO);
+            if ($ymd) {
+                [$yy, $mm, $dd] = $ymd;
+                $dateValue = sheets_date_serial($yy, $mm, $dd);
+            } else {
+                $dateValue = $dateISO;
+            }
+
+            // US4: Create incremental formula for total
+            $formulaValue = createIncrementalFormula(
+                $spreadsheetId,
+                $sheetName,
+                $cols['total'],
+                $row,
+                $total,
+                $token
+            );
+
+            logMessage('info', "📊 Formula created", [
+                'request_id' => $requestId,
+                'row' => $row,
+                'formula' => $formulaValue,
+                'attempt' => $attempt
+            ]);
+
+            // Write with transaction ID for optimistic locking (US8)
+            $transactionId = generateTransactionId();
+            $supplierWithTxId = $supplier . '|||TX:' . $transactionId;
+
+            // Write: label (with TX), date, formula
+            $putRange = sprintf('%s!%s%d:%s%d', $sheetName, $cols['label'], $row, $cols['total'], $row);
+            $updUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
+                . rawurlencode($spreadsheetId)
+                . '/values/' . rawurlencode($putRange)
+                . '?valueInputOption=USER_ENTERED'; // USER_ENTERED to process formulas
+
+            logMessage('info', "✍️ Writing with aggregation", [
+                'request_id' => $requestId,
+                'range' => $putRange,
+                'row' => $row,
+                'transaction_id' => substr($transactionId, 0, 8),
+                'attempt' => $attempt
+            ]);
+
+            $wr = http_json(
+                'PUT',
+                $updUrl,
+                [
+                    'Authorization' => "Bearer $token",
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ],
+                ['values' => [[$supplierWithTxId, $dateValue, $formulaValue]]]
+            );
+
+            if ($wr['status'] < 200 || $wr['status'] >= 300) {
+                throw new RuntimeException('Write failed: ' . ($wr['text'] ?? 'Unknown error'));
+            }
+
+            // Small delay to ensure write is committed
+            usleep(100000); // 100ms
+
+            // Verify the write succeeded by reading back the label column
+            $verifyRange = sprintf('%s!%s%d:%s%d', $sheetName, $cols['label'], $row, $cols['label'], $row);
+            $verifyUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
+                . rawurlencode($spreadsheetId)
+                . '/values/' . rawurlencode($verifyRange);
+
+            $vr = http_json('GET', $verifyUrl, ['Authorization' => "Bearer $token", 'Accept' => 'application/json']);
+
+            if ($vr['status'] < 200 || $vr['status'] >= 300) {
+                throw new RuntimeException('Verification read failed: ' . ($vr['text'] ?? 'Unknown error'));
+            }
+
+            $readValue = $vr['json']['values'][0][0] ?? '';
+
+            // Check if our transaction ID is in the value
+            if (strpos($readValue, '|||TX:' . $transactionId) === false) {
+                // Conflict detected - another instance wrote to this row
+                logMessage('warn', "⚠️ Conflict detected - retrying", [
+                    'request_id' => $requestId,
+                    'row' => $row,
+                    'expected_tx' => substr($transactionId, 0, 8),
+                    'read_value' => substr($readValue, 0, 50),
+                    'attempt' => $attempt
+                ]);
+
+                // Exponential backoff before retry
+                $backoffMs = min(100 * pow(2, $attempt - 1), 2000); // Max 2s
+                usleep($backoffMs * 1000);
+
+                continue; // Retry
+            }
+
+            // Success! Clean up the transaction ID from the supplier name
+            $cleanSupplier = str_replace('|||TX:' . $transactionId, '', $readValue);
+
+            $cleanUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
+                . rawurlencode($spreadsheetId)
+                . '/values/' . rawurlencode($verifyRange)
+                . '?valueInputOption=RAW';
+
+            $cr = http_json(
+                'PUT',
+                $cleanUrl,
+                [
+                    'Authorization' => "Bearer $token",
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ],
+                ['values' => [[$cleanSupplier]]]
+            );
+
+            if ($cr['status'] < 200 || $cr['status'] >= 300) {
+                logMessage('warn', "⚠️ Failed to clean transaction ID (non-critical)", [
+                    'request_id' => $requestId,
+                    'row' => $row
+                ]);
+            }
+
+            // Apply date formatting
+            $sheetId = get_sheet_id_by_title($spreadsheetId, $sheetName, $token);
+            $dateColIndex = col_letter_to_index($cols['date']);
+
+            $batchBody = [
+                'requests' => [[
+                    'repeatCell' => [
+                        'range' => [
+                            'sheetId' => $sheetId,
+                            'startRowIndex' => $row - 1,
+                            'endRowIndex' => $row,
+                            'startColumnIndex' => $dateColIndex,
+                            'endColumnIndex' => $dateColIndex + 1,
+                        ],
+                        'cell' => [
+                            'userEnteredFormat' => [
+                                'numberFormat' => [
+                                    'type' => 'DATE',
+                                    'pattern' => 'dd/mm/yyyy'
+                                ]
+                            ]
+                        ],
+                        'fields' => 'userEnteredFormat.numberFormat'
+                    ]
+                ]]
+            ];
+
+            $fmt = http_json(
+                'POST',
+                'https://sheets.googleapis.com/v4/spreadsheets/' . rawurlencode($spreadsheetId) . ':batchUpdate',
+                [
+                    'Authorization' => "Bearer $token",
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ],
+                $batchBody
+            );
+
+            if ($fmt['status'] < 200 || $fmt['status'] >= 300) {
+                logMessage('warn', "⚠️ Failed to format date cell (non-critical)", [
+                    'request_id' => $requestId,
+                    'row' => $row
+                ]);
+            }
+
+            logMessage('info', "🎉 Aggregation write succeeded", [
+                'request_id' => $requestId,
+                'sheet' => $sheetName,
+                'row' => $row,
+                'attempt' => $attempt,
+                'is_new_label' => $isNewLabel,
+                'transaction_id' => substr($transactionId, 0, 8)
+            ]);
+
+            return [
+                'ok' => true,
+                'written' => [
+                    'sheet' => $sheetName,
+                    'row' => $row,
+                    'range' => $putRange,
+                    'attempts' => $attempt,
+                    'is_new_label' => $isNewLabel,
+                    'label' => $supplier,
+                    'normalized_label' => normalizeLabel($supplier)
+                ]
+            ];
+        } catch (Throwable $e) {
+            // Check if this is a constraint violation (US6) - don't retry
+            if (strpos($e->getMessage(), 'Un seul libellé autorisé') !== false) {
+                logMessage('error', "❌ Constraint violation", [
+                    'request_id' => $requestId,
+                    'error' => $e->getMessage()
+                ]);
+                throw $e; // Don't retry constraint violations
+            }
+
+            logMessage('error', "❌ Aggregation write attempt failed", [
+                'request_id' => $requestId,
+                'attempt' => $attempt,
+                'error' => $e->getMessage()
+            ]);
+
+            if ($attempt >= $maxRetries) {
+                throw new RuntimeException("Failed after {$maxRetries} attempts: " . $e->getMessage());
+            }
+
+            // US8: Exponential backoff before retry
+            $backoffMs = min(100 * pow(2, $attempt - 1), 2000);
+            usleep($backoffMs * 1000);
+        }
+    }
+
+    throw new RuntimeException("Failed after {$maxRetries} attempts - max retries exceeded");
+}
