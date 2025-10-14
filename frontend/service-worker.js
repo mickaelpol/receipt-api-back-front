@@ -7,7 +7,7 @@
  * - Images: Cache with size limit
  */
 
-const CACHE_VERSION = 'v5'; // Fix icon paths + add update detection
+const CACHE_VERSION = 'v6'; // Fix PWA update detection + add SKIP_WAITING handler
 const STATIC_CACHE = `scan2sheet-static-${CACHE_VERSION}`;
 const API_CACHE = `scan2sheet-api-${CACHE_VERSION}`;
 const IMAGE_CACHE = `scan2sheet-images-${CACHE_VERSION}`;
@@ -18,6 +18,7 @@ const STATIC_ASSETS = [
   '/index.html',
   '/assets/css/app.css',
   '/assets/js/app.js',
+  '/assets/js/pwa-update.js',
   '/assets/icons/icon-192.svg',
   '/assets/icons/icon-512.svg',
   // Bootstrap CSS (CDN fallback)
@@ -32,6 +33,18 @@ const CACHEABLE_API_ENDPOINTS = [
   '/api/health',
   '/api/ready'
 ];
+
+/**
+ * Message event - handle messages from clients
+ */
+self.addEventListener('message', (event) => {
+  console.log('[SW] Message received:', event.data);
+
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    console.log('[SW] SKIP_WAITING requested, activating immediately...');
+    self.skipWaiting();
+  }
+});
 
 /**
  * Install event - cache static assets

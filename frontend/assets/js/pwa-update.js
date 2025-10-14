@@ -1,19 +1,24 @@
 /**
- * PWA Update Manager
+ * PWA Update Manager - Version améliorée
  * Gère la détection et notification des mises à jour de la PWA
  */
 
 (function() {
   'use strict';
 
+  console.log('[PWA Update] Initialisation du gestionnaire de mises à jour...');
+
   // État de la mise à jour
   let updateAvailable = false;
   let newServiceWorker = null;
+  let registration = null;
 
   /**
    * Affiche une notification de mise à jour à l'utilisateur
    */
   function showUpdateNotification(version) {
+    console.log('[PWA Update] Affichage de la notification de mise à jour:', version);
+
     // Créer un élément de notification
     const notification = document.createElement('div');
     notification.id = 'pwa-update-notification';
@@ -40,7 +45,7 @@
             ✨ Nouvelle version disponible !
           </div>
           <div style="font-size: 13px; opacity: 0.95;">
-            Une mise à jour est prête à être installée (${version || 'nouvelle version'})
+            Cliquez sur "Actualiser" pour profiter des dernières améliorations
           </div>
         </div>
         <button id="pwa-update-btn" style="
@@ -105,59 +110,159 @@
 
     // Gérer le clic sur le bouton "Actualiser"
     document.getElementById('pwa-update-btn').addEventListener('click', () => {
+      console.log('[PWA Update] Utilisateur a cliqué sur Actualiser');
       notification.remove();
+
       // Si un nouveau service worker est en attente, l'activer
       if (newServiceWorker) {
+        console.log('[PWA Update] Envoi de SKIP_WAITING au nouveau SW');
         newServiceWorker.postMessage({ type: 'SKIP_WAITING' });
       }
-      // Recharger la page
-      window.location.reload();
+
+      // Attendre un peu puis recharger
+      setTimeout(() => {
+        console.log('[PWA Update] Rechargement de la page...');
+        window.location.reload();
+      }, 100);
     });
 
     // Gérer le clic sur le bouton "Fermer"
     document.getElementById('pwa-dismiss-btn').addEventListener('click', () => {
+      console.log('[PWA Update] Utilisateur a fermé la notification');
       notification.remove();
     });
   }
 
   /**
-   * Écouter les messages du service worker
+   * Détecte si une mise à jour est disponible
    */
-  if ('serviceWorker' in navigator) {
+  function checkForUpdate() {
+    if (!registration) {
+      console.log('[PWA Update] Pas de registration disponible');
+      return;
+    }
+
+    console.log('[PWA Update] Vérification des mises à jour...');
+
+    // Vérifier s'il y a un SW en attente
+    if (registration.waiting) {
+      console.log('[PWA Update] ⚠️ Un Service Worker est déjà en attente !');
+      newServiceWorker = registration.waiting;
+      updateAvailable = true;
+      showUpdateNotification('nouvelle version');
+      return;
+    }
+
+    // Vérifier s'il y a un SW en cours d'installation
+    if (registration.installing) {
+      console.log('[PWA Update] 🔄 Un Service Worker est en cours d\'installation...');
+      trackInstalling(registration.installing);
+      return;
+    }
+
+    // Forcer la vérification
+    registration.update().catch(err => {
+      console.error('[PWA Update] Erreur lors de la vérification:', err);
+    });
+  }
+
+  /**
+   * Surveille l'installation d'un nouveau SW
+   */
+  function trackInstalling(worker) {
+    worker.addEventListener('statechange', () => {
+      console.log('[PWA Update] État du nouveau SW:', worker.state);
+
+      if (worker.state === 'installed') {
+        console.log('[PWA Update] ✅ Nouveau Service Worker installé !');
+        newServiceWorker = worker;
+        updateAvailable = true;
+        showUpdateNotification('nouvelle version');
+      }
+    });
+  }
+
+  /**
+   * Configure les écouteurs d'événements
+   */
+  function setupListeners() {
+    if (!('serviceWorker' in navigator)) {
+      console.log('[PWA Update] Service Worker non supporté');
+      return;
+    }
+
+    // Écouter les messages du service worker
     navigator.serviceWorker.addEventListener('message', (event) => {
+      console.log('[PWA Update] Message reçu du SW:', event.data);
+
       if (event.data && event.data.type === 'SW_UPDATED') {
-        console.log('[PWA] Nouvelle version détectée:', event.data.version);
+        console.log('[PWA Update] Mise à jour détectée via message:', event.data.version);
         updateAvailable = true;
         showUpdateNotification(event.data.version);
       }
     });
 
-    // Vérifier les mises à jour périodiquement (toutes les 5 minutes)
-    if (navigator.serviceWorker.controller) {
-      setInterval(() => {
-        navigator.serviceWorker.getRegistration().then((registration) => {
-          if (registration) {
-            console.log('[PWA] Vérification des mises à jour...');
-            registration.update();
-          }
-        });
-      }, 5 * 60 * 1000); // 5 minutes
-    }
-
-    // Écouter les changements de contrôleur (nouveau SW activé)
+    // Écouter les changements de contrôleur
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      console.log('[PWA] Nouveau service worker activé');
+      console.log('[PWA Update] Changement de contrôleur détecté');
+
       if (updateAvailable) {
         // Éviter les rechargements en boucle
-        if (!window.localStorage.getItem('pwa-reloading')) {
-          window.localStorage.setItem('pwa-reloading', 'true');
+        if (!window.sessionStorage.getItem('pwa-reloading')) {
+          console.log('[PWA Update] Rechargement automatique...');
+          window.sessionStorage.setItem('pwa-reloading', 'true');
           window.location.reload();
         } else {
-          window.localStorage.removeItem('pwa-reloading');
+          console.log('[PWA Update] Flag de rechargement détecté, nettoyage');
+          window.sessionStorage.removeItem('pwa-reloading');
         }
       }
     });
+
+    // Obtenir la registration
+    navigator.serviceWorker.getRegistration().then((reg) => {
+      if (!reg) {
+        console.log('[PWA Update] Aucune registration trouvée');
+        return;
+      }
+
+      console.log('[PWA Update] Registration obtenue');
+      registration = reg;
+
+      // Vérifier immédiatement s'il y a une mise à jour
+      checkForUpdate();
+
+      // Écouter les mises à jour de la registration
+      reg.addEventListener('updatefound', () => {
+        console.log('[PWA Update] 🆕 Mise à jour trouvée !');
+        const newWorker = reg.installing;
+        if (newWorker) {
+          trackInstalling(newWorker);
+        }
+      });
+
+      // Vérifier périodiquement (toutes les 60 secondes)
+      setInterval(() => {
+        console.log('[PWA Update] Vérification périodique...');
+        reg.update();
+      }, 60 * 1000);
+    });
+
+    console.log('[PWA Update] ✅ Listeners configurés');
   }
 
-  console.log('[PWA] Update manager initialized');
+  // Initialiser quand le DOM est prêt
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupListeners);
+  } else {
+    setupListeners();
+  }
+
+  // Exposer une fonction de debug
+  window.checkPWAUpdate = function() {
+    console.log('[PWA Update] Vérification manuelle demandée');
+    checkForUpdate();
+  };
+
+  console.log('[PWA Update] ✅ Gestionnaire initialisé - Tapez checkPWAUpdate() pour forcer une vérification');
 })();
