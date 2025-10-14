@@ -25,53 +25,60 @@
     notification.innerHTML = `
       <div style="
         position: fixed;
-        top: 20px;
+        top: 16px;
         left: 50%;
         transform: translateX(-50%);
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 16px 24px;
+        padding: 14px 16px;
         border-radius: 12px;
         box-shadow: 0 8px 24px rgba(0,0,0,0.3);
         z-index: 10000;
-        max-width: 90%;
-        display: flex;
-        align-items: center;
-        gap: 16px;
+        max-width: min(90vw, 500px);
+        width: 90vw;
+        box-sizing: border-box;
         animation: slideDown 0.3s ease-out;
       ">
-        <div style="flex: 1;">
-          <div style="font-weight: bold; margin-bottom: 4px;">
-            ✨ Nouvelle version disponible !
+        <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+          <div style="display: flex; align-items: start; gap: 12px;">
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-weight: bold; margin-bottom: 4px; font-size: 15px;">
+                ✨ Nouvelle version disponible !
+              </div>
+              <div style="font-size: 13px; opacity: 0.95; line-height: 1.4;">
+                Cliquez sur "Actualiser" pour profiter des dernières améliorations
+              </div>
+            </div>
+            <button id="pwa-dismiss-btn" style="
+              background: transparent;
+              color: white;
+              border: 1px solid rgba(255,255,255,0.3);
+              padding: 8px 10px;
+              border-radius: 6px;
+              cursor: pointer;
+              transition: transform 0.2s;
+              font-size: 16px;
+              line-height: 1;
+              flex-shrink: 0;
+            ">
+              ✕
+            </button>
           </div>
-          <div style="font-size: 13px; opacity: 0.95;">
-            Cliquez sur "Actualiser" pour profiter des dernières améliorations
-          </div>
+          <button id="pwa-update-btn" style="
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+            width: 100%;
+            font-size: 15px;
+          ">
+            Actualiser maintenant
+          </button>
         </div>
-        <button id="pwa-update-btn" style="
-          background: white;
-          color: #667eea;
-          border: none;
-          padding: 10px 20px;
-          border-radius: 8px;
-          font-weight: bold;
-          cursor: pointer;
-          transition: transform 0.2s;
-          white-space: nowrap;
-        ">
-          Actualiser
-        </button>
-        <button id="pwa-dismiss-btn" style="
-          background: transparent;
-          color: white;
-          border: 1px solid rgba(255,255,255,0.3);
-          padding: 10px 16px;
-          border-radius: 8px;
-          cursor: pointer;
-          transition: transform 0.2s;
-        ">
-          ✕
-        </button>
       </div>
     `;
 
