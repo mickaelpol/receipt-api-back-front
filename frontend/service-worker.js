@@ -7,7 +7,7 @@
  * - Images: Cache with size limit
  */
 
-const CACHE_VERSION = 'v4'; // Fix POST request caching
+const CACHE_VERSION = 'v5'; // Fix icon paths + add update detection
 const STATIC_CACHE = `scan2sheet-static-${CACHE_VERSION}`;
 const API_CACHE = `scan2sheet-api-${CACHE_VERSION}`;
 const IMAGE_CACHE = `scan2sheet-images-${CACHE_VERSION}`;
@@ -18,8 +18,8 @@ const STATIC_ASSETS = [
   '/index.html',
   '/assets/css/app.css',
   '/assets/js/app.js',
-  '/assets/icons/icon-192.png',
-  '/assets/icons/icon-512.png',
+  '/assets/icons/icon-192.svg',
+  '/assets/icons/icon-512.svg',
   // Bootstrap CSS (CDN fallback)
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css',
   // Bootstrap Icons (CDN fallback)
@@ -37,6 +37,7 @@ const CACHEABLE_API_ENDPOINTS = [
  * Install event - cache static assets
  */
 self.addEventListener('install', (event) => {
+  console.log(`[SW] Installing new version ${CACHE_VERSION}...`);
 
   event.waitUntil(
     caches.open(STATIC_CACHE)
@@ -44,6 +45,7 @@ self.addEventListener('install', (event) => {
         return cache.addAll(STATIC_ASSETS);
       })
       .then(() => {
+        console.log(`[SW] Version ${CACHE_VERSION} installed, waiting to activate...`);
         return self.skipWaiting(); // Activate immediately
       })
       .catch((error) => {
@@ -56,6 +58,7 @@ self.addEventListener('install', (event) => {
  * Activate event - clean up old caches
  */
 self.addEventListener('activate', (event) => {
+  console.log(`[SW] Activating version ${CACHE_VERSION}...`);
 
   event.waitUntil(
     caches.keys()
@@ -67,13 +70,26 @@ self.addEventListener('activate', (event) => {
                 cacheName !== STATIC_CACHE &&
                 cacheName !== API_CACHE &&
                 cacheName !== IMAGE_CACHE) {
+              console.log(`[SW] Deleting old cache: ${cacheName}`);
               return caches.delete(cacheName);
             }
           })
         );
       })
       .then(() => {
+        console.log(`[SW] Version ${CACHE_VERSION} activated!`);
         return self.clients.claim(); // Take control immediately
+      })
+      .then(() => {
+        // Notify all clients that a new version is active
+        return self.clients.matchAll().then((clients) => {
+          clients.forEach((client) => {
+            client.postMessage({
+              type: 'SW_UPDATED',
+              version: CACHE_VERSION
+            });
+          });
+        });
       })
   );
 });
