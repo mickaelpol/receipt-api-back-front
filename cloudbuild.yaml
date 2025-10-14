@@ -107,10 +107,10 @@ steps:
           exit 1
         fi
 
-        # Run unit tests
-        php vendor/bin/phpunit --testsuite Unit --colors=always || {
+        # Run unit tests (without coverage to avoid warnings)
+        php vendor/bin/phpunit --testsuite Unit --colors=always --no-coverage || {
           echo "❌ PHPUnit tests failed"
-          echo "💡 Run locally: cd backend && php vendor/bin/phpunit --testsuite Unit"
+          echo "💡 Run locally: cd backend && php vendor/bin/phpunit --testsuite Unit --no-coverage"
           exit 1
         }
 
