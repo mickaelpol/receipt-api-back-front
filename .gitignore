@@ -36,6 +36,8 @@ backend/keys/*.json
 *.json
 !package.json
 !composer.json
+!frontend/assets/cdn-manifest.json
+!frontend/manifest.json
 keys/
 credentials/
 *.key
@@ -58,3 +60,17 @@ test.md
 # Backup files
 *.bak
 *.backup
+
+# PHPUnit / Testing
+backend/coverage/
+backend/.phpunit.result.cache
+.phpunit.cache/
+phpunit.cache/
+coverage/
+*.coverage
+clover.xml
+junit.xml
+cobertura.xml
+
+# Claude
+CLAUDE.md

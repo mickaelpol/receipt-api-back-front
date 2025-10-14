@@ -16,8 +16,12 @@ services:
             - ../backend/index.php:/var/www/html/index.php:ro
             - ../backend/bootstrap.php:/var/www/html/bootstrap.php:ro
             - ../backend/app.php:/var/www/html/app.php:ro
+            - ../backend/RateLimiter.php:/var/www/html/RateLimiter.php:ro
+            - ../backend/rate_limit_middleware.php:/var/www/html/rate_limit_middleware.php:ro
             - ../backend/composer.json:/var/www/html/composer.json:ro
-            - ../backend/composer.lock:/var/www/html/composer.lock:ro
+            - ../backend/vendor:/var/www/html/vendor:rw
+            - ../backend/tests:/var/www/html/tests:ro
+            - ../phpunit.xml:/phpunit.xml:ro
             - ../frontend:/var/www/html/frontend:ro
         env_file:
             - .env

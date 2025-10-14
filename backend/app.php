@@ -48,10 +48,10 @@ function logApiRequest($endpoint, $status, $context = [])
 {
     $level = $status >= 400 ? 'error' : 'info';
     $message = "API request: {$endpoint} -> {$status}";
-    
+
     $context['status_code'] = $status;
     $context['endpoint'] = $endpoint;
-    
+
     logMessage($level, $message, $context);
 }
 
@@ -85,22 +85,23 @@ function maskSensitiveData($data)
  * Detect protocol (HTTP or HTTPS) with Cloud Run support
  * @return string 'http' or 'https'
  */
-function detectProtocol(): string {
+function detectProtocol(): string
+{
     // Check standard HTTPS variable
     if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
         return 'https';
     }
-    
+
     // Check X-Forwarded-Proto header (used by load balancers)
     if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
         return 'https';
     }
-    
+
     // Cloud Run always uses HTTPS
     if (isset($_SERVER['HTTP_HOST']) && strpos($_SERVER['HTTP_HOST'], 'run.app') !== false) {
         return 'https';
     }
-    
+
     // Default to http for local development
     return 'http';
 }
@@ -110,24 +111,25 @@ function detectProtocol(): string {
  * @param string $whoColumns JSON string
  * @return bool True if valid
  */
-function validate_who_columns(string $whoColumns): bool {
+function validate_who_columns(string $whoColumns): bool
+{
     $decoded = json_decode($whoColumns, true);
-    
+
     if (!is_array($decoded)) {
         return false;
     }
-    
+
     foreach ($decoded as $name => $columns) {
         // Name must be non-empty string
         if (!is_string($name) || trim($name) === '') {
             return false;
         }
-        
+
         // Columns must be array with exactly 3 elements
         if (!is_array($columns) || count($columns) !== 3) {
             return false;
         }
-        
+
         // Each column must be a single letter
         foreach ($columns as $col) {
             if (!is_string($col) || strlen($col) !== 1 || !ctype_alpha($col)) {
@@ -135,7 +137,7 @@ function validate_who_columns(string $whoColumns): bool {
             }
         }
     }
-    
+
     return !empty($decoded);
 }
 
@@ -204,15 +206,30 @@ function parse_who_columns(): array
 function parse_date_ymd(string $s): ?array
 {
     $s = trim($s);
+    $year = $month = $day = null;
+
     if (preg_match('~^(\d{4})[-/\.](\d{1,2})[-/\.](\d{1,2})$~', $s, $m)) {
-        return [(int)$m[1], (int)$m[2], (int)$m[3]];
+        $year = (int)$m[1];
+        $month = (int)$m[2];
+        $day = (int)$m[3];
+    } elseif (preg_match('~^(\d{1,2})[-/\.](\d{1,2})[-/\.](\d{4})$~', $s, $m)) {
+        $year = (int)$m[3];
+        $month = (int)$m[2];
+        $day = (int)$m[1];
+    } elseif (preg_match('~^(\d{4})-(\d{2})-(\d{2})[T\s]~', $s, $m)) {
+        $year = (int)$m[1];
+        $month = (int)$m[2];
+        $day = (int)$m[3];
     }
-    if (preg_match('~^(\d{1,2})[-/\.](\d{1,2})[-/\.](\d{4})$~', $s, $m)) {
-        return [(int)$m[3], (int)$m[2], (int)$m[1]];
+
+    // Validate extracted date components
+    if ($year !== null && $month !== null && $day !== null) {
+        // Check if date is valid using checkdate() which validates ranges
+        if (checkdate($month, $day, $year)) {
+            return [$year, $month, $day];
+        }
     }
-    if (preg_match('~^(\d{4})-(\d{2})-(\d{2})[T\s]~', $s, $m)) {
-        return [(int)$m[1], (int)$m[2], (int)$m[3]];
-    }
+
     return null;
 }
 
@@ -293,17 +310,17 @@ function bearer(): ?string
     if (function_exists('getallheaders')) {
         $hdrs = array_change_key_case(getallheaders(), CASE_LOWER);
         if (!empty($hdrs['authorization'])) {
-            $h = trim($hdrs['authorization']);
+            $h = ltrim($hdrs['authorization']);
             if (stripos($h, 'bearer ') === 0) {
-                return substr($h, 7);
+                return ltrim(substr($h, 7));
             }
         }
     }
     foreach (['HTTP_AUTHORIZATION', 'Authorization', 'REDIRECT_HTTP_AUTHORIZATION'] as $k) {
         if (!empty($_SERVER[$k])) {
-            $h = trim($_SERVER[$k]);
+            $h = ltrim($_SERVER[$k]);
             if (stripos($h, 'Bearer ') === 0) {
-                return substr($h, 7);
+                return ltrim(substr($h, 7));
             }
         }
     }
@@ -365,7 +382,7 @@ function validateGoogleCredentials(): array
 {
     // On Cloud Run, utiliser les credentials du Service Account par défaut
     $isCloudRun = getenv('K_SERVICE') !== false; // K_SERVICE est défini sur Cloud Run
-    
+
     if ($isCloudRun) {
         return [
             'valid' => true,
@@ -373,10 +390,10 @@ function validateGoogleCredentials(): array
             'code' => 'CLOUD_RUN_DEFAULT'
         ];
     }
-    
+
     // En local, vérifier GOOGLE_APPLICATION_CREDENTIALS
     $credentialsPath = getenv('GOOGLE_APPLICATION_CREDENTIALS');
-    
+
     if (!$credentialsPath) {
         return [
             'valid' => false,
@@ -384,7 +401,7 @@ function validateGoogleCredentials(): array
             'code' => 'MISSING_ENV'
         ];
     }
-    
+
     if (!file_exists($credentialsPath)) {
         return [
             'valid' => false,
@@ -392,7 +409,7 @@ function validateGoogleCredentials(): array
             'code' => 'FILE_NOT_FOUND'
         ];
     }
-    
+
     if (!is_readable($credentialsPath)) {
         return [
             'valid' => false,
@@ -400,7 +417,7 @@ function validateGoogleCredentials(): array
             'code' => 'FILE_NOT_READABLE'
         ];
     }
-    
+
     // Try to parse JSON
     $content = file_get_contents($credentialsPath);
     if ($content === false) {
@@ -410,7 +427,7 @@ function validateGoogleCredentials(): array
             'code' => 'FILE_READ_ERROR'
         ];
     }
-    
+
     $json = json_decode($content, true);
     if (json_last_error() !== JSON_ERROR_NONE) {
         return [
@@ -419,7 +436,7 @@ function validateGoogleCredentials(): array
             'code' => 'INVALID_JSON'
         ];
     }
-    
+
     // Validate required fields
     $requiredFields = ['type', 'project_id', 'private_key', 'client_email'];
     foreach ($requiredFields as $field) {
@@ -431,7 +448,7 @@ function validateGoogleCredentials(): array
             ];
         }
     }
-    
+
     if ($json['type'] !== 'service_account') {
         return [
             'valid' => false,
@@ -439,7 +456,7 @@ function validateGoogleCredentials(): array
             'code' => 'INVALID_TYPE'
         ];
     }
-    
+
     return [
         'valid' => true,
         'project_id' => $json['project_id'],
@@ -461,7 +478,7 @@ function saToken(array $scopes): string
     if (!$validation['valid']) {
         throw new RuntimeException("Invalid credentials: {$validation['error']}");
     }
-    
+
     try {
         $c = ApplicationDefaultCredentials::getCredentials($scopes);
         $t = $c->fetchAuthToken();
@@ -760,4 +777,402 @@ function sendJsonResponse($data, $status = 200)
 function sendErrorResponse($message, $status = 500)
 {
     sendJsonResponse(['ok' => false, 'error' => $message], $status);
+}
+
+/**
+ * Generate a unique transaction ID for optimistic locking
+ * @return string Unique transaction ID
+ */
+function generateTransactionId(): string
+{
+    return bin2hex(random_bytes(16));
+}
+
+/**
+ * Write to Google Sheets with optimistic locking (retry on conflict)
+ *
+ * This function implements optimistic locking by:
+ * 1. Reading the current state of the target row
+ * 2. Attempting to write with a unique transaction ID
+ * 3. Verifying the write succeeded by checking the transaction ID
+ * 4. Retrying with exponential backoff if a conflict is detected
+ *
+ * @param string $spreadsheetId Spreadsheet ID
+ * @param string $sheetName Sheet name
+ * @param array $cols Column mapping ['label' => 'K', 'date' => 'L', 'total' => 'M']
+ * @param int $startRow Starting row for searching empty rows
+ * @param string $supplier Supplier name
+ * @param string $dateISO Date in ISO format
+ * @param float $total Total amount
+ * @param string $token Access token
+ * @param int $maxRetries Maximum number of retries (default: 5)
+ * @return array Write result with row information
+ * @throws RuntimeException If write fails after max retries
+ */
+function writeToSheetOptimistic(
+    string $spreadsheetId,
+    string $sheetName,
+    array $cols,
+    int $startRow,
+    string $supplier,
+    string $dateISO,
+    float $total,
+    string $token,
+    int $maxRetries = 5
+): array {
+    $requestId = bin2hex(random_bytes(4));
+
+    for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+        try {
+            logMessage('info', "📝 Optimistic write attempt #{$attempt}", [
+                'request_id' => $requestId,
+                'sheet' => $sheetName,
+                'attempt' => $attempt,
+                'max_retries' => $maxRetries
+            ]);
+
+            // 1. Find next empty row
+            $row = findNextEmptyRow($spreadsheetId, $sheetName, $cols['label'], $startRow, $token);
+
+            logMessage('info', "✅ Found next empty row", [
+                'request_id' => $requestId,
+                'row' => $row,
+                'attempt' => $attempt
+            ]);
+
+            // 2. Generate unique transaction ID
+            $transactionId = generateTransactionId();
+
+            // 3. Prepare date value
+            $ymd = parse_date_ymd($dateISO);
+            if ($ymd) {
+                [$yy, $mm, $dd] = $ymd;
+                $dateValue = sheets_date_serial($yy, $mm, $dd);
+            } else {
+                $dateValue = $dateISO;
+            }
+
+            // 4. Write values with transaction ID in a hidden column (or append to label)
+            // Strategy: We'll add the transaction ID as a suffix to the supplier name temporarily
+            $supplierWithTxId = $supplier . '|||TX:' . $transactionId;
+
+            $putRange = sprintf('%s!%s%d:%s%d', $sheetName, $cols['label'], $row, $cols['total'], $row);
+            $updUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
+                . rawurlencode($spreadsheetId)
+                . '/values/' . rawurlencode($putRange)
+                . '?valueInputOption=RAW';
+
+            logMessage('info', "✍️ Writing with transaction ID", [
+                'request_id' => $requestId,
+                'range' => $putRange,
+                'row' => $row,
+                'transaction_id' => substr($transactionId, 0, 8),
+                'attempt' => $attempt
+            ]);
+
+            $wr = http_json(
+                'PUT',
+                $updUrl,
+                [
+                    'Authorization' => "Bearer $token",
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ],
+                ['values' => [[$supplierWithTxId, $dateValue, $total]]]
+            );
+
+            if ($wr['status'] < 200 || $wr['status'] >= 300) {
+                throw new RuntimeException('Write failed: ' . ($wr['text'] ?? 'Unknown error'));
+            }
+
+            // 5. Small delay to ensure write is committed
+            usleep(100000); // 100ms
+
+            // 6. Verify the write succeeded by reading back the row
+            $verifyRange = sprintf('%s!%s%d:%s%d', $sheetName, $cols['label'], $row, $cols['label'], $row);
+            $verifyUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
+                . rawurlencode($spreadsheetId)
+                . '/values/' . rawurlencode($verifyRange);
+
+            $vr = http_json('GET', $verifyUrl, ['Authorization' => "Bearer $token", 'Accept' => 'application/json']);
+
+            if ($vr['status'] < 200 || $vr['status'] >= 300) {
+                throw new RuntimeException('Verification read failed: ' . ($vr['text'] ?? 'Unknown error'));
+            }
+
+            $readValue = $vr['json']['values'][0][0] ?? '';
+
+            // Check if our transaction ID is in the value
+            if (strpos($readValue, '|||TX:' . $transactionId) === false) {
+                // Conflict detected - another instance wrote to this row
+                logMessage('warn', "⚠️ Conflict detected - retrying", [
+                    'request_id' => $requestId,
+                    'row' => $row,
+                    'expected_tx' => substr($transactionId, 0, 8),
+                    'read_value' => substr($readValue, 0, 50),
+                    'attempt' => $attempt
+                ]);
+
+                // Exponential backoff before retry
+                $backoffMs = min(100 * pow(2, $attempt - 1), 2000); // Max 2s
+                usleep($backoffMs * 1000);
+
+                continue; // Retry
+            }
+
+            // 7. Success! Clean up the transaction ID from the supplier name
+            $cleanSupplier = str_replace('|||TX:' . $transactionId, '', $readValue);
+
+            $cleanUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
+                . rawurlencode($spreadsheetId)
+                . '/values/' . rawurlencode($verifyRange)
+                . '?valueInputOption=RAW';
+
+            $cr = http_json(
+                'PUT',
+                $cleanUrl,
+                [
+                    'Authorization' => "Bearer $token",
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ],
+                ['values' => [[$cleanSupplier]]]
+            );
+
+            if ($cr['status'] < 200 || $cr['status'] >= 300) {
+                logMessage('warn', "⚠️ Failed to clean transaction ID (non-critical)", [
+                    'request_id' => $requestId,
+                    'row' => $row
+                ]);
+            }
+
+            // 8. Apply date formatting
+            $sheetId = get_sheet_id_by_title($spreadsheetId, $sheetName, $token);
+            $dateColIndex = col_letter_to_index($cols['date']);
+
+            $batchBody = [
+                'requests' => [[
+                    'repeatCell' => [
+                        'range' => [
+                            'sheetId' => $sheetId,
+                            'startRowIndex' => $row - 1,
+                            'endRowIndex' => $row,
+                            'startColumnIndex' => $dateColIndex,
+                            'endColumnIndex' => $dateColIndex + 1,
+                        ],
+                        'cell' => [
+                            'userEnteredFormat' => [
+                                'numberFormat' => [
+                                    'type' => 'DATE',
+                                    'pattern' => 'dd/mm/yyyy'
+                                ]
+                            ]
+                        ],
+                        'fields' => 'userEnteredFormat.numberFormat'
+                    ]
+                ]]
+            ];
+
+            $fmt = http_json(
+                'POST',
+                'https://sheets.googleapis.com/v4/spreadsheets/' . rawurlencode($spreadsheetId) . ':batchUpdate',
+                [
+                    'Authorization' => "Bearer $token",
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ],
+                $batchBody
+            );
+
+            if ($fmt['status'] < 200 || $fmt['status'] >= 300) {
+                logMessage('warn', "⚠️ Failed to format date cell (non-critical)", [
+                    'request_id' => $requestId,
+                    'row' => $row
+                ]);
+            }
+
+            logMessage('info', "🎉 Optimistic write succeeded", [
+                'request_id' => $requestId,
+                'sheet' => $sheetName,
+                'row' => $row,
+                'attempt' => $attempt,
+                'transaction_id' => substr($transactionId, 0, 8)
+            ]);
+
+            return [
+                'ok' => true,
+                'written' => [
+                    'sheet' => $sheetName,
+                    'row' => $row,
+                    'range' => $putRange,
+                    'attempts' => $attempt
+                ]
+            ];
+        } catch (Throwable $e) {
+            logMessage('error', "❌ Optimistic write attempt failed", [
+                'request_id' => $requestId,
+                'attempt' => $attempt,
+                'error' => $e->getMessage()
+            ]);
+
+            if ($attempt >= $maxRetries) {
+                throw new RuntimeException("Failed after {$maxRetries} attempts: " . $e->getMessage());
+            }
+
+            // Exponential backoff before retry
+            $backoffMs = min(100 * pow(2, $attempt - 1), 2000);
+            usleep($backoffMs * 1000);
+        }
+    }
+
+    throw new RuntimeException("Failed after {$maxRetries} attempts - max retries exceeded");
+}
+
+/**
+ * Find next empty row in a Google Sheet column
+ * @param string $spreadsheetId Spreadsheet ID
+ * @param string $sheetName Sheet name
+ * @param string $column Column letter (e.g., 'K')
+ * @param int $startRow Starting row number
+ * @param string $token Access token
+ * @return int Next empty row number
+ */
+function findNextEmptyRow(
+    string $spreadsheetId,
+    string $sheetName,
+    string $column,
+    int $startRow,
+    string $token
+): int {
+    $scanRange = sprintf('%s!%s%d:%s', $sheetName, $column, $startRow, $column);
+    $getUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
+        . rawurlencode($spreadsheetId)
+        . '/values/' . rawurlencode($scanRange);
+
+    $qr = http_json('GET', $getUrl, ['Authorization' => "Bearer $token", 'Accept' => 'application/json']);
+
+    if ($qr['status'] < 200 || $qr['status'] >= 300) {
+        throw new RuntimeException('Failed to read sheet: ' . ($qr['text'] ?? 'Unknown error'));
+    }
+
+    $values = $qr['json']['values'] ?? [];
+    $row = $startRow;
+
+    for ($i = 0; $i < count($values); $i++) {
+        $v = isset($values[$i][0]) ? trim((string)$values[$i][0]) : '';
+        if ($v === '') {
+            return $startRow + $i;
+        }
+        $row = $startRow + $i + 1;
+    }
+
+    return $row;
+}
+
+/**
+ * Cache Document AI results based on image hash
+ *
+ * This function wraps docai_process_bytes() with a file-based cache.
+ * Results are cached based on SHA256 hash of the image content.
+ *
+ * @param string $bytes Document bytes
+ * @param string $mime MIME type
+ * @param string $projectId GCP project ID
+ * @param string $location GCP location
+ * @param string $processorId Document AI processor ID
+ * @param int $cacheTtl Cache TTL in seconds (default: 3600 = 1 hour)
+ * @return array Document AI response
+ */
+function docai_process_bytes_cached(
+    string $bytes,
+    string $mime,
+    string $projectId,
+    string $location,
+    string $processorId,
+    int $cacheTtl = 3600
+): array {
+    // Generate cache key from image hash
+    $imageHash = hash('sha256', $bytes);
+    $cacheKey = "docai:{$processorId}:{$imageHash}";
+    $cacheFile = sys_get_temp_dir() . "/docai_cache_{$imageHash}.json";
+
+    // Check cache
+    if (file_exists($cacheFile)) {
+        $age = time() - filemtime($cacheFile);
+        if ($age < $cacheTtl) {
+            $cached = file_get_contents($cacheFile);
+            if ($cached !== false) {
+                $result = json_decode($cached, true);
+                if ($result !== null) {
+                    logMessage('info', '📦 Document AI cache hit', [
+                        'hash' => substr($imageHash, 0, 16),
+                        'age_seconds' => $age,
+                        'ttl' => $cacheTtl
+                    ]);
+                    return $result;
+                }
+            }
+        }
+    }
+
+    // Cache miss - call Document AI
+    logMessage('info', '🔍 Document AI cache miss - calling API', [
+        'hash' => substr($imageHash, 0, 16),
+        'mime' => $mime,
+        'size_bytes' => strlen($bytes)
+    ]);
+
+    $result = docai_process_bytes($bytes, $mime, $projectId, $location, $processorId);
+
+    // Save to cache
+    $saved = file_put_contents($cacheFile, json_encode($result));
+    if ($saved !== false) {
+        logMessage('info', '💾 Document AI result cached', [
+            'hash' => substr($imageHash, 0, 16),
+            'cache_file' => basename($cacheFile),
+            'size_bytes' => $saved
+        ]);
+    } else {
+        logMessage('warn', '⚠️ Failed to cache Document AI result', [
+            'hash' => substr($imageHash, 0, 16),
+            'cache_file' => $cacheFile
+        ]);
+    }
+
+    return $result;
+}
+
+/**
+ * Cleanup old Document AI cache files
+ * Call this periodically (e.g., from a cron job or at startup)
+ *
+ * @param int $maxAge Maximum age in seconds (default: 86400 = 24 hours)
+ * @return int Number of files cleaned up
+ */
+function cleanupDocAiCache(int $maxAge = 86400): int
+{
+    $cacheFiles = glob(sys_get_temp_dir() . '/docai_cache_*.json');
+    if ($cacheFiles === false) {
+        return 0;
+    }
+
+    $cleaned = 0;
+    $now = time();
+
+    foreach ($cacheFiles as $file) {
+        if (file_exists($file) && ($now - filemtime($file)) > $maxAge) {
+            if (unlink($file)) {
+                $cleaned++;
+            }
+        }
+    }
+
+    if ($cleaned > 0) {
+        logMessage('info', '🧹 Document AI cache cleanup', [
+            'files_cleaned' => $cleaned,
+            'max_age_hours' => round($maxAge / 3600, 1)
+        ]);
+    }
+
+    return $cleaned;
 }

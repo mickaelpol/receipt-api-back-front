@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Git hook pre-push : Vérifications avant push
-# Bloque le push si les tests échouent
+# Git hook pre-push : Tests complets avant push
+# BLOQUE le push si les tests échouent
 
 set -e
 
@@ -25,20 +25,66 @@ do
     echo ""
 done
 
-# 1. Tests PHP (si PHPCS est configuré)
-if [ -f "backend/vendor/bin/phpcs" ] && [ -f "phpcs.xml" ]; then
-    echo "🧪 Tests PHPCS..."
-    if ./backend/vendor/bin/phpcs --standard=phpcs.xml backend/ 2>&1 | grep -v "^$"; then
-        echo -e "${GREEN}✅ PHPCS OK${NC}"
+# ==== 1. PHPCS - Linting PHP (OBLIGATOIRE) ====
+echo "🔍 Running PHPCS..."
+if [ -f "phpcs.xml" ] && [ -f "backend/vendor/bin/phpcs" ]; then
+    if ./backend/vendor/bin/phpcs --standard=phpcs.xml backend/ --extensions=php; then
+        echo -e "${GREEN}✅ PHPCS passed${NC}"
     else
-        if [ ${PIPESTATUS[0]} -ne 0 ]; then
-            echo -e "${RED}❌ PHPCS échoué${NC}"
-            echo "Corrigez avec: ./backend/vendor/bin/phpcbf --standard=phpcs.xml backend/"
-            FAILED=1
-        fi
+        echo -e "${RED}❌ PHPCS failed - Fix code style errors${NC}"
+        echo "Run: ./backend/vendor/bin/phpcbf --standard=phpcs.xml backend/"
+        FAILED=1
     fi
-    echo ""
+else
+    echo -e "${YELLOW}⚠️  PHPCS not configured (skipping)${NC}"
 fi
+echo ""
+
+# ==== 2. PHP Syntax Check (OBLIGATOIRE) ====
+echo "🔍 Checking PHP syntax..."
+PHP_FILES=$(find backend -name "*.php" -not -path "*/vendor/*")
+PHP_ERRORS=0
+
+for file in $PHP_FILES; do
+    if ! php -l "$file" > /dev/null 2>&1; then
+        echo -e "${RED}❌ Syntax error in: $file${NC}"
+        php -l "$file"
+        PHP_ERRORS=$((PHP_ERRORS + 1))
+    fi
+done
+
+if [ $PHP_ERRORS -eq 0 ]; then
+    echo -e "${GREEN}✅ PHP syntax OK${NC}"
+else
+    echo -e "${RED}❌ Found $PHP_ERRORS PHP syntax errors${NC}"
+    FAILED=1
+fi
+echo ""
+
+# ==== 3. JavaScript Lint (OBLIGATOIRE) ====
+echo "🔍 Checking JavaScript..."
+JS_FILES=$(find frontend/assets/js -name "*.js" 2>/dev/null || true)
+JS_ERRORS=0
+
+if [ -n "$JS_FILES" ] && command -v node &> /dev/null; then
+    for file in $JS_FILES; do
+        if ! node --check "$file" > /dev/null 2>&1; then
+            echo -e "${RED}❌ Syntax error in: $file${NC}"
+            node --check "$file"
+            JS_ERRORS=$((JS_ERRORS + 1))
+        fi
+    done
+
+    if [ $JS_ERRORS -eq 0 ]; then
+        echo -e "${GREEN}✅ JavaScript syntax OK${NC}"
+    else
+        echo -e "${RED}❌ Found $JS_ERRORS JavaScript syntax errors${NC}"
+        FAILED=1
+    fi
+else
+    echo -e "${YELLOW}⚠️  Node.js not available (skipping JS checks)${NC}"
+fi
+echo ""
 
 # 2. Vérifier que les dépendances sont à jour
 echo "📦 Vérification des dépendances..."
@@ -96,47 +142,32 @@ else
 fi
 echo ""
 
-# 5. Avertissement si push vers main
-if [ "$BRANCH" = "main" ]; then
-    echo -e "${YELLOW}╔════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${YELLOW}║  ⚠️  ATTENTION: Push vers MAIN                        ║${NC}"
-    echo -e "${YELLOW}║                                                        ║${NC}"
-    echo -e "${YELLOW}║  Cela va déclencher le déploiement sur Cloud Run !   ║${NC}"
-    echo -e "${YELLOW}║                                                        ║${NC}"
-    echo -e "${YELLOW}║  Assurez-vous que:                                    ║${NC}"
-    echo -e "${YELLOW}║  • Les tests locaux passent                           ║${NC}"
-    echo -e "${YELLOW}║  • Le code a été testé en local                       ║${NC}"
-    echo -e "${YELLOW}║  • make smoke-test fonctionne                         ║${NC}"
-    echo -e "${YELLOW}╚════════════════════════════════════════════════════════╝${NC}"
+# ==== 5. Protection branche main ====
+if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
     echo ""
-    
-    # Demander confirmation
-    read -p "Voulez-vous vraiment déployer en production ? (y/N) " -n 1 -r
-    echo
+    echo -e "${YELLOW}╔═══════════════════════════════════════════════════════╗${NC}"
+    echo -e "${YELLOW}║  ⚠️  PUSHING TO MAIN BRANCH                          ║${NC}"
+    echo -e "${YELLOW}║                                                       ║${NC}"
+    echo -e "${YELLOW}║  Cloud Run déploiera automatiquement en production!  ║${NC}"
+    echo -e "${YELLOW}║                                                       ║${NC}"
+    echo -e "${YELLOW}║  Vérifiez que:                                        ║${NC}"
+    echo -e "${YELLOW}║  • Tous les tests passent                             ║${NC}"
+    echo -e "${YELLOW}║  • Le code fonctionne en local                        ║${NC}"
+    echo -e "${YELLOW}║  • make smoke-test réussit                            ║${NC}"
+    echo -e "${YELLOW}╚═══════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    # Afficher les derniers commits
+    echo "📋 Commits to be pushed:"
+    git log origin/main..HEAD --oneline 2>/dev/null | head -5 || echo "  (first push to main)"
+    echo ""
+
+    read -p "Push to main and deploy to production? [y/N] " -n 1 -r
+    echo ""
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${RED}❌ Push annulé${NC}"
+        echo -e "${RED}❌ Push cancelled by user${NC}"
         exit 1
     fi
-    echo ""
-fi
-
-# 6. Tests de smoke locaux (optionnel mais recommandé)
-if [ "$BRANCH" = "main" ]; then
-    echo "🧪 Tests de smoke recommandés..."
-    echo "Voulez-vous lancer 'make smoke-test' maintenant ? (y/N)"
-    read -p "> " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        if make smoke-test; then
-            echo -e "${GREEN}✅ Smoke tests OK${NC}"
-        else
-            echo -e "${RED}❌ Smoke tests échoués${NC}"
-            FAILED=1
-        fi
-    else
-        echo -e "${YELLOW}⚠️  Smoke tests sautés (à vos risques et périls)${NC}"
-    fi
-    echo ""
 fi
 
 # Résultat final

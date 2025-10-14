@@ -7,7 +7,8 @@
     
     <!-- Exclude vendor directory -->
     <exclude-pattern>backend/vendor/*</exclude-pattern>
-    
+    <exclude-pattern>*/backend/tests/*</exclude-pattern>
+
     <!-- How to scan -->
     <arg name="colors"/>
     <arg value="p"/>

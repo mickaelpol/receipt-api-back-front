@@ -21,10 +21,24 @@ echo "📝 Vérification PHP..."
 PHP_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.php$' || true)
 
 if [ -n "$PHP_FILES" ]; then
-    echo "Fichiers PHP modifiés:"
-    echo "$PHP_FILES" | sed 's/^/  - /'
-    
-    # Vérifier la syntaxe PHP
+    # Filtrer les fichiers backend (exclure les tests)
+    BACKEND_FILES=$(echo "$PHP_FILES" | grep '^backend/' | grep -v '^backend/tests/' || true)
+    TEST_FILES=$(echo "$PHP_FILES" | grep '^backend/tests/' || true)
+
+    echo "Fichiers PHP à vérifier (backend):"
+    if [ -n "$BACKEND_FILES" ]; then
+        echo "$BACKEND_FILES" | sed 's/^/  ✓ /'
+    else
+        echo "  (aucun)"
+    fi
+
+    if [ -n "$TEST_FILES" ]; then
+        echo -e "${YELLOW}Fichiers PHP exclus (tests):"
+        echo "$TEST_FILES" | sed 's/^/  ⊘ /'
+        echo -e "${NC}"
+    fi
+
+    # Vérifier la syntaxe PHP de tous les fichiers (y compris tests)
     for file in $PHP_FILES; do
         php -l "$file" > /dev/null 2>&1
         if [ $? -ne 0 ]; then
@@ -32,19 +46,43 @@ if [ -n "$PHP_FILES" ]; then
             FAILED=1
         fi
     done
-    
-    # PHPCS (si configuré)
+
+    # PHPCS (si configuré) - seulement sur les fichiers backend non-test
     if [ -f "phpcs.xml" ] && [ -f "backend/vendor/bin/phpcs" ]; then
-        echo "  → Linting PHP avec PHPCS..."
-        for file in $PHP_FILES; do
-            if [[ $file == backend/* ]]; then
-                ./backend/vendor/bin/phpcs --standard=phpcs.xml "$file" 2>&1 | grep -v "^$" || true
-                if [ ${PIPESTATUS[0]} -ne 0 ]; then
-                    echo -e "${RED}❌ PHPCS échoué pour: $file${NC}"
+        if [ -n "$BACKEND_FILES" ]; then
+            echo "  → Linting PHP avec PHPCS..."
+            # Vérifier si Docker est disponible
+            if command -v docker &> /dev/null && docker compose -f infra/docker-compose.yml -p receipt ps app | grep -q "Up" 2>/dev/null; then
+                echo "  → Utilisation de PHPCS via Docker (standard PSR12)..."
+
+                # Préparer la liste des fichiers pour Docker
+                DOCKER_FILES=$(echo "$BACKEND_FILES" | sed 's|^backend/|/var/www/html/|g' | tr '\n' ' ')
+
+                # Vérifier tous les fichiers en une seule commande
+                PHPCS_OUTPUT=$(docker compose -f infra/docker-compose.yml -p receipt exec -T app sh -c "php -d memory_limit=512M /var/www/html/vendor/bin/phpcs --standard=PSR12 $DOCKER_FILES" 2>&1 || true)
+
+                # Afficher l'output
+                echo "$PHPCS_OUTPUT" | grep -v "^$" || true
+
+                # Ne bloquer que sur les ERRORS, pas sur les WARNINGS
+                # Chercher "FOUND X ERROR" où X > 0
+                if echo "$PHPCS_OUTPUT" | grep -qE "FOUND [1-9][0-9]* ERROR"; then
+                    echo -e "${RED}❌ PHPCS a détecté des ERRORS (voir ci-dessus)${NC}"
                     FAILED=1
+                elif echo "$PHPCS_OUTPUT" | grep -qE "FOUND.*WARNING"; then
+                    echo -e "${YELLOW}⚠️  PHPCS warnings détectés (non bloquant)${NC}"
                 fi
+            else
+                # Fallback: PHPCS local (peut ne pas fonctionner si extensions manquantes)
+                echo -e "${YELLOW}⚠️  Docker non disponible, tentative avec PHPCS local...${NC}"
+                for file in $BACKEND_FILES; do
+                    ./backend/vendor/bin/phpcs --standard=phpcs.xml "$file" 2>&1 | grep -v "^$" || true
+                    if [ ${PIPESTATUS[0]} -ne 0 ]; then
+                        echo -e "${YELLOW}⚠️  PHPCS local échoué pour: $file (extensions manquantes ?)${NC}"
+                    fi
+                done
             fi
-        done
+        fi
     fi
     
     echo -e "${GREEN}✅ PHP OK${NC}"

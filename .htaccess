@@ -25,6 +25,10 @@ RewriteRule ^assets/(.*)$ frontend/assets/$1 [L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^manifest\.json$ frontend/manifest.json [L]
 
+# Servir le service-worker.js du frontend (IMPORTANT: doit être à la racine pour le scope)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^service-worker\.js$ frontend/service-worker.js [L]
+
 # Frontend SPA - servir frontend/index.html pour la racine
 RewriteRule ^$ frontend/index.html [L]
 
@@ -35,6 +39,7 @@ RewriteCond %{REQUEST_URI} !^/ready$
 RewriteCond %{REQUEST_URI} !^/frontend/
 RewriteCond %{REQUEST_URI} !^/assets/
 RewriteCond %{REQUEST_URI} !^/manifest\.json$
+RewriteCond %{REQUEST_URI} !^/service-worker\.js$
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^.*$ frontend/index.html [L]

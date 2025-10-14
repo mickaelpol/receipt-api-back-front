@@ -87,7 +87,7 @@ steps:
       - '--max-instances'
       - '10'
       - '--concurrency'
-      - '1'
+      - '10'
       - '--memory'
       - '512Mi'
       - '--cpu'

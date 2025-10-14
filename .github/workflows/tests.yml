@@ -1,0 +1,103 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, staging, dev ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: mbstring, xml, ctype, iconv, intl
+          tools: composer:v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Composer dependencies
+        working-directory: backend
+        run: composer install --prefer-dist --no-progress
+
+      - name: Check PHP syntax
+        run: |
+          echo "🔍 Checking PHP syntax..."
+          PHP_FILES=$(find backend -name "*.php" -not -path "*/vendor/*")
+          for file in $PHP_FILES; do
+            php -l "$file"
+          done
+
+      - name: Run PHPCS
+        working-directory: backend
+        run: |
+          echo "🔍 Running PHPCS..."
+          ./vendor/bin/phpcs --standard=../phpcs.xml . --extensions=php
+
+      - name: Install PCOV for code coverage
+        run: |
+          echo "🔧 Installing PCOV extension..."
+          sudo pecl install pcov || true
+          echo "extension=pcov.so" | sudo tee /etc/php/8.1/cli/conf.d/99-pcov.ini
+
+      - name: Run PHPUnit tests
+        working-directory: backend
+        run: |
+          echo "🧪 Running PHPUnit tests..."
+          php vendor/bin/phpunit --testsuite Unit
+
+      - name: Run PHPUnit with code coverage
+        working-directory: backend
+        run: |
+          echo "📊 Generating code coverage..."
+          php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit --coverage-clover coverage/clover.xml --coverage-text
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./backend/coverage/clover.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+        continue-on-error: true
+
+      - name: Check JavaScript syntax
+        run: |
+          echo "🔍 Checking JavaScript syntax..."
+          JS_FILES=$(find frontend/assets/js -name "*.js" 2>/dev/null || true)
+          if [ -n "$JS_FILES" ]; then
+            for file in $JS_FILES; do
+              node --check "$file"
+            done
+          fi
+
+      - name: Validate Docker configuration
+        run: |
+          echo "🐳 Validating Dockerfile..."
+          if [ -f "infra/Dockerfile" ]; then
+            docker build --quiet --tag test:latest -f infra/Dockerfile .
+            docker rmi test:latest
+          fi
+
+      - name: Validate cloudbuild.yaml
+        run: |
+          echo "☁️  Validating cloudbuild.yaml..."
+          if [ -f "cloudbuild.yaml" ]; then
+            python3 -c "import yaml; yaml.safe_load(open('cloudbuild.yaml'))"
+          fi
+
+      - name: ✅ Tests passed
+        run: |
+          echo "════════════════════════════════════"
+          echo "✅ All tests passed successfully!"
+          echo "════════════════════════════════════"

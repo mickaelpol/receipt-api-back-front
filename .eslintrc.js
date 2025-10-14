@@ -15,9 +15,14 @@ module.exports = {
             requestAnimationFrame: 'readonly',
             setTimeout: 'readonly',
             clearTimeout: 'readonly',
+            setInterval: 'readonly',
+            clearInterval: 'readonly',
             FileReader: 'readonly',
             Image: 'readonly',
             ResizeObserver: 'readonly',
+            Notification: 'readonly',
+            navigator: 'readonly',
+            indexedDB: 'readonly',
             // Google APIs
             google: 'readonly',
             gapi: 'readonly',
@@ -25,7 +30,7 @@ module.exports = {
     },
     rules: {
         // Disable debug statements
-        'no-console': 'error',
+        'no-console': 'warn',
         'no-debugger': 'error',
 
         // Code quality

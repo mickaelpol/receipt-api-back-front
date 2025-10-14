@@ -15,7 +15,8 @@ $APP_ENV = getenv('APP_ENV') ?: 'prod';
 $DEBUG = (getenv('DEBUG') && getenv('DEBUG') !== '0');
 
 // Fonction pour capturer var_dump en mode debug
-function debugDump($data, $label = 'DEBUG') {
+function debugDump($data, $label = 'DEBUG')
+{
     global $APP_ENV, $DEBUG;
     if ($APP_ENV === 'local' && $DEBUG) {
         $GLOBALS['_DEBUG_OUTPUT'][] = [
@@ -28,7 +29,8 @@ function debugDump($data, $label = 'DEBUG') {
 }
 
 // Fonction pour ajouter des headers de debug
-function addDebugHeaders($handler, $route) {
+function addDebugHeaders($handler, $route)
+{
     global $APP_ENV;
     if ($APP_ENV === 'local') {
         header("X-Handler: $handler");
@@ -38,15 +40,16 @@ function addDebugHeaders($handler, $route) {
 }
 
 // Fonction pour afficher les debug dumps
-function outputDebugDumps() {
+function outputDebugDumps()
+{
     global $APP_ENV, $DEBUG, $_DEBUG_OUTPUT;
-    
+
     if ($APP_ENV !== 'local' || !$DEBUG || empty($_DEBUG_OUTPUT)) {
         return;
     }
-    
+
     $contentType = $_SERVER['HTTP_ACCEPT'] ?? '';
-    
+
     // Si c'est une requête JSON, on ajoute les dumps en commentaire
     if (strpos($contentType, 'application/json') !== false) {
         echo "\n/* DEBUG DUMPS:\n";
@@ -129,6 +132,24 @@ if (!$WHO_COLUMNS) {
 /* ---------- Router ---------- */
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 
+/* ---------- Rate Limiting ---------- */
+require_once __DIR__ . '/rate_limit_middleware.php';
+
+// Apply rate limiting to API endpoints
+if (str_starts_with($path, '/api/')) {
+    $rateLimitId = getRateLimitIdentifier();
+    applyRateLimit($rateLimitId, $path);
+}
+
+/* ---------- Cache Cleanup (once per day max) ---------- */
+// Cleanup old Document AI cache files (24h+ old) - run max once per day
+$cleanupFlagFile = sys_get_temp_dir() . '/docai_cache_cleanup_last_run.txt';
+$cleanupInterval = 86400; // 24 hours
+if (!file_exists($cleanupFlagFile) || (time() - filemtime($cleanupFlagFile)) > $cleanupInterval) {
+    cleanupDocAiCache(86400); // Clean files older than 24h
+    touch($cleanupFlagFile);
+}
+
 /* ---- GET /api/debug/headers ---- */
 if ($path === '/api/debug/headers') {
     header('Content-Type: text/plain; charset=utf-8');
@@ -152,7 +173,7 @@ if ($path === '/api/debug/headers') {
 /* ---- GET /debug/routes (DEV ONLY) ---- */
 if ($path === '/debug/routes' && $APP_ENV === 'local') {
     addDebugHeaders('api.php::debug/routes', '/debug/routes');
-    
+
     $routes = [
         'GET /api/config' => 'api.php::config - Configuration de l\'application',
         'GET /api/auth/me' => 'api.php::auth/me - Authentification utilisateur',
@@ -164,7 +185,7 @@ if ($path === '/debug/routes' && $APP_ENV === 'local') {
         'GET /api/debug/headers' => 'api.php::debug/headers - Debug des headers HTTP',
         'GET /debug/routes' => 'api.php::debug/routes - Cette page (dev seulement)',
     ];
-    
+
     header('Content-Type: text/html; charset=utf-8');
     echo "<!DOCTYPE html><html><head><title>Routes Debug - Receipt API</title>";
     echo "<style>body{font-family:monospace;margin:20px;} .route{margin:10px 0;padding:10px;background:#f5f5f5;border-left:4px solid #007cba;} .method{color:#007cba;font-weight:bold;} .path{color:#333;} .handler{color:#666;}</style>";
@@ -174,7 +195,7 @@ if ($path === '/debug/routes' && $APP_ENV === 'local') {
     echo "<p><strong>DEBUG:</strong> " . ($DEBUG ? 'ON' : 'OFF') . "</p>";
     echo "<p><strong>Timestamp:</strong> " . date('c') . "</p>";
     echo "<h2>Available Routes:</h2>";
-    
+
     foreach ($routes as $route => $description) {
         $parts = explode(' ', $route, 2);
         $method = $parts[0];
@@ -184,12 +205,12 @@ if ($path === '/debug/routes' && $APP_ENV === 'local') {
         echo "<span class='handler'>$description</span>";
         echo "</div>";
     }
-    
+
     echo "<h2>Request Info:</h2>";
     echo "<p><strong>Current URL:</strong> " . ($_SERVER['REQUEST_URI'] ?? 'N/A') . "</p>";
     echo "<p><strong>Method:</strong> " . ($_SERVER['REQUEST_METHOD'] ?? 'N/A') . "</p>";
     echo "<p><strong>Host:</strong> " . ($_SERVER['HTTP_HOST'] ?? 'N/A') . "</p>";
-    
+
     outputDebugDumps();
     echo "</body></html>";
     exit;
@@ -198,7 +219,7 @@ if ($path === '/debug/routes' && $APP_ENV === 'local') {
 /* ---- GET /api/health & /health ---- */
 if (($path === '/api/health' || $path === '/health') && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
     addDebugHeaders('api.php::health', $path);
-    
+
     // Basic health check - just verify the process is alive
     sendJsonResponse([
         'ok' => true,
@@ -211,7 +232,7 @@ if (($path === '/api/health' || $path === '/health') && ($_SERVER['REQUEST_METHO
 if (($path === '/api/ready' || $path === '/ready') && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
     // Readiness check - verify credentials and critical dependencies
     $validation = validateGoogleCredentials();
-    
+
     if (!$validation['valid']) {
         http_response_code(503);
         sendJsonResponse([
@@ -222,7 +243,7 @@ if (($path === '/api/ready' || $path === '/ready') && ($_SERVER['REQUEST_METHOD'
             'timestamp' => date('c')
         ]);
     }
-    
+
     // Check other critical environment variables
     $criticalEnvVars = [
         'GOOGLE_OAUTH_CLIENT_ID' => $CLIENT_ID,
@@ -230,14 +251,14 @@ if (($path === '/api/ready' || $path === '/ready') && ($_SERVER['REQUEST_METHOD'
         'GCP_PROJECT_ID' => $PROJECT_ID,
         'GCP_PROCESSOR_ID' => $PROCESSOR_ID
     ];
-    
+
     $missingVars = [];
     foreach ($criticalEnvVars as $var => $value) {
         if (empty($value)) {
             $missingVars[] = $var;
         }
     }
-    
+
     if (!empty($missingVars)) {
         http_response_code(503);
         sendJsonResponse([
@@ -248,7 +269,7 @@ if (($path === '/api/ready' || $path === '/ready') && ($_SERVER['REQUEST_METHOD'
             'timestamp' => date('c')
         ]);
     }
-    
+
     sendJsonResponse([
         'ok' => true,
         'status' => 'ready',
@@ -264,7 +285,7 @@ if (($path === '/api/ready' || $path === '/ready') && ($_SERVER['REQUEST_METHOD'
 /* ---- GET /api/config ---- */
 if ($path === '/api/config' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
     addDebugHeaders('api.php::config', '/api/config');
-    
+
     // Debug: Afficher les variables d'environnement en mode dev
     debugDump([
         'ALLOWED_EMAILS' => $ALLOWED_EMAILS,
@@ -272,10 +293,10 @@ if ($path === '/api/config' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') 
         'WHO_COLUMNS' => $WHO_COLUMNS,
         'APP_ENV' => $APP_ENV
     ], 'Config Variables');
-    
+
     // Cache court pour éviter les requêtes répétées
     header('Cache-Control: public, max-age=300'); // 5 minutes
-    
+
     $response = [
         'ok'              => true,
         'client_id'       => $CLIENT_ID,
@@ -284,9 +305,9 @@ if ($path === '/api/config' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') 
         'who_options'     => array_keys($WHO_COLUMNS),
         'max_batch'       => $MAX_BATCH_UPLOADS,
     ];
-    
+
     sendJsonResponse($response);
-    
+
     // Afficher les debug dumps après la réponse JSON
     outputDebugDumps();
     exit;
@@ -295,9 +316,9 @@ if ($path === '/api/config' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') 
 /* ---- GET /api/auth/me ---- */
 if ($path === '/api/auth/me') {
     addDebugHeaders('api.php::auth/me', '/api/auth/me');
-    
+
     debugDump($ALLOWED_EMAILS, 'ALLOWED_EMAILS');
-    
+
     try {
         $auth = requireGoogleUserAllowed($ALLOWED_EMAILS, $CLIENT_ID);
         sendJsonResponse(['ok' => true, 'email' => $auth['email']]);
@@ -341,9 +362,8 @@ if ($path === '/api/sheets' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') 
 
 /* ---- POST /api/sheets/write ---- */
 if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
-    $lockFp = null;
-    $requestId = bin2hex(random_bytes(4)); // ID unique pour tracer cette requête
-    
+    $requestId = bin2hex(random_bytes(4));
+
     try {
         requireGoogleUserAllowed($ALLOWED_EMAILS, $CLIENT_ID);
         if (!$SPREADSHEET_ID) {
@@ -356,7 +376,7 @@ if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === '
         $supplier  = trim((string)($body['supplier'] ?? ''));
         $dateISO   = (string)($body['dateISO'] ?? '');
         $total     = (float)($body['total'] ?? 0);
-        
+
         logMessage('info', "📝 Write request received", [
             'request_id' => $requestId,
             'sheet' => $sheetName,
@@ -365,7 +385,7 @@ if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === '
             'date' => $dateISO,
             'total' => $total
         ]);
-        
+
         if (!$sheetName || !$who || !$supplier || !$dateISO) {
             throw new RuntimeException('Champs requis');
         }
@@ -377,186 +397,30 @@ if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === '
         $cols = ['label' => $colsArr[0], 'date' => $colsArr[1], 'total' => $colsArr[2]];
         $startRow = 11;
 
-        // ----- VERROU avec retry (évite collisions de ligne en écriture concurrente)
-        $lockKey  = preg_replace('/[^a-z0-9_\-]/i', '_', $SPREADSHEET_ID . '_' . $sheetName . '_' . $who);
-        $lockPath = sys_get_temp_dir() . "/gsheets_lock_{$lockKey}.lock";
-        
-        logMessage('info', "🔒 Acquiring lock", [
-            'request_id' => $requestId,
-            'lock_path' => $lockPath
-        ]);
-        
-        $lockFp = fopen($lockPath, 'c');
-        if ($lockFp) {
-            // Attendre max 10 secondes pour obtenir le verrou
-            $lockAcquired = flock($lockFp, LOCK_EX | LOCK_NB);
-            $retries = 0;
-            while (!$lockAcquired && $retries < 50) { // 50 * 200ms = 10s max
-                usleep(200000); // 200ms
-                $lockAcquired = flock($lockFp, LOCK_EX | LOCK_NB);
-                $retries++;
-            }
-            
-            if (!$lockAcquired) {
-                logMessage('error', "❌ Failed to acquire lock after {$retries} retries", [
-                    'request_id' => $requestId
-                ]);
-                throw new RuntimeException('Unable to acquire lock - too many concurrent writes');
-            }
-            
-            logMessage('info', "✅ Lock acquired after {$retries} retries", [
-                'request_id' => $requestId
-            ]);
-        } else {
-            logMessage('warn', "⚠️ Could not create lock file", [
-                'request_id' => $requestId,
-                'lock_path' => $lockPath
-            ]);
-        }
-
         $token = saToken(['https://www.googleapis.com/auth/spreadsheets']);
 
-        // 1) trouver la prochaine ligne vide (dans la colonne "label")
-        $scanRange = sprintf('%s!%s%d:%s', $sheetName, $cols['label'], $startRow, $cols['label']);
-        $getUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
-            . rawurlencode($SPREADSHEET_ID)
-            . '/values/' . rawurlencode($scanRange);
-        
-        logMessage('info', "📖 Reading sheet to find next empty row", [
-            'request_id' => $requestId,
-            'range' => $scanRange
-        ]);
-        
-        $qr = http_json('GET', $getUrl, ['Authorization' => "Bearer $token", 'Accept' => 'application/json']);
-        if ($qr['status'] < 200 || $qr['status'] >= 300) {
-            logMessage('error', "❌ Failed to read sheet", [
-                'request_id' => $requestId,
-                'status' => $qr['status'],
-                'response' => $qr['text']
-            ]);
-            throw new RuntimeException($qr['text'] ?: 'Lecture feuille échouée');
-        }
-        $values = $qr['json']['values'] ?? [];
-        $row = $startRow;
-        for ($i = 0; $i < count($values); $i++) {
-            $v = isset($values[$i][0]) ? trim((string)$values[$i][0]) : '';
-            if ($v === '') {
-                $row = $startRow + $i;
-                break;
-            }
-            $row = $startRow + $i + 1;
-        }
-        
-        logMessage('info', "✅ Found next empty row", [
-            'request_id' => $requestId,
-            'row' => $row,
-            'scanned_rows' => count($values)
-        ]);
-
-        // 2) préparer la date numérique (serial)
-        $ymd = parse_date_ymd($dateISO);
-        if ($ymd) {
-            [$yy,$mm,$dd] = $ymd;
-            $dateValue = sheets_date_serial($yy, $mm, $dd);
-        } else {
-            $dateValue = $dateISO;
-        } // fallback
-
-        // 3) écriture des 3 valeurs (RAW)
-        $putRange = sprintf('%s!%s%d:%s%d', $sheetName, $cols['label'], $row, $cols['total'], $row);
-        $updUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
-            . rawurlencode($SPREADSHEET_ID)
-            . '/values/' . rawurlencode($putRange)
-            . '?valueInputOption=RAW';
-
-        logMessage('info', "✍️ Writing to sheet", [
-            'request_id' => $requestId,
-            'range' => $putRange,
-            'row' => $row,
-            'values' => [$supplier, $dateValue, $total]
-        ]);
-
-        $wr = http_json(
-            'PUT',
-            $updUrl,
-            [
-                'Authorization' => "Bearer $token",
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json'
-            ],
-            ['values' => [[ $supplier, $dateValue, $total ]]]
+        // Use optimistic locking instead of file-based locking
+        $result = writeToSheetOptimistic(
+            $SPREADSHEET_ID,
+            $sheetName,
+            $cols,
+            $startRow,
+            $supplier,
+            $dateISO,
+            $total,
+            $token,
+            5 // max 5 retries
         );
-        if ($wr['status'] < 200 || $wr['status'] >= 300) {
-            logMessage('error', "❌ Failed to write to sheet", [
-                'request_id' => $requestId,
-                'status' => $wr['status'],
-                'response' => $wr['text']
-            ]);
-            throw new RuntimeException($wr['text'] ?: 'Écriture échouée');
-        }
-        
-        logMessage('info', "✅ Successfully wrote to sheet", [
-            'request_id' => $requestId,
-            'updated_cells' => $wr['json']['updatedCells'] ?? 'unknown'
-        ]);
-
-        // 4) forcer le format Date sur la cellule de date (dd/mm/yyyy)
-        $sheetId = get_sheet_id_by_title($SPREADSHEET_ID, $sheetName, $token);
-        $dateColIndex = col_letter_to_index($cols['date']);
-        $range = [
-            'sheetId' => $sheetId,
-            'startRowIndex' => $row - 1,
-            'endRowIndex'   => $row,
-            'startColumnIndex' => $dateColIndex,
-            'endColumnIndex'   => $dateColIndex + 1,
-        ];
-        $batchBody = [
-            'requests' => [[
-                'repeatCell' => [
-                    'range' => $range,
-                    'cell' => [
-                        'userEnteredFormat' => [
-                            'numberFormat' => [
-                                'type' => 'DATE',
-                                'pattern' => 'dd/mm/yyyy'
-                            ]
-                        ]
-                    ],
-                    'fields' => 'userEnteredFormat.numberFormat'
-                ]
-            ]]
-        ];
-        $fmt = http_json(
-            'POST',
-            'https://sheets.googleapis.com/v4/spreadsheets/' . rawurlencode($SPREADSHEET_ID) . ':batchUpdate',
-            [
-                'Authorization' => "Bearer $token",
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json'
-            ],
-            $batchBody
-        );
-        if ($fmt['status'] < 200 || $fmt['status'] >= 300) {
-            logMessage('warn', "⚠️ Failed to format date cell (non-critical)", [
-                'request_id' => $requestId,
-                'status' => $fmt['status'],
-                'response' => $fmt['text']
-            ]);
-            // Ne pas bloquer si le formatage échoue, les données sont déjà écrites
-        } else {
-            logMessage('info', "✅ Date formatting applied", [
-                'request_id' => $requestId
-            ]);
-        }
 
         logMessage('info', "🎉 Write request completed successfully", [
             'request_id' => $requestId,
             'sheet' => $sheetName,
-            'row' => $row,
+            'row' => $result['written']['row'] ?? 'unknown',
+            'attempts' => $result['written']['attempts'] ?? 1,
             'duration_ms' => (microtime(true) - ($_SERVER['REQUEST_TIME_FLOAT'] ?? 0)) * 1000
         ]);
 
-        echo json_encode(['ok' => true,'written' => ['sheet' => $sheetName,'row' => $row,'range' => $putRange]]);
+        echo json_encode($result);
     } catch (Throwable $e) {
         logMessage('error', "❌ Write request failed", [
             'request_id' => $requestId ?? 'unknown',
@@ -565,14 +429,6 @@ if ($path === '/api/sheets/write' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === '
         ]);
         http_response_code(500);
         echo json_encode(['ok' => false,'error' => $e->getMessage()]);
-    } finally {
-        if ($lockFp) {
-            flock($lockFp, LOCK_UN);
-            fclose($lockFp);
-            logMessage('info', "🔓 Lock released", [
-                'request_id' => $requestId ?? 'unknown'
-            ]);
-        }
     }
     exit;
 }
@@ -612,7 +468,7 @@ if ($path === '/api/scan' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             throw new RuntimeException('Aucun document transmis');
         }
 
-        $doc  = docai_process_bytes($bytes, $mime, $PROJECT_ID, $LOCATION, $PROCESSOR_ID);
+        $doc  = docai_process_bytes_cached($bytes, $mime, $PROJECT_ID, $LOCATION, $PROCESSOR_ID);
 
         // Option: renvoyer le JSON DocAI brut
         $wantRaw = (isset($_GET['raw']) && $_GET['raw'] == '1') || (is_array($j) && !empty($j['include_raw_only']));
@@ -666,7 +522,7 @@ if ($path === '/api/scan/batch' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'PO
                 $mime = finfo_buffer($f, $bytes) ?: 'image/jpeg';
                 finfo_close($f);
 
-                $doc   = docai_process_bytes($bytes, $mime, $PROJECT_ID, $LOCATION, $PROCESSOR_ID);
+                $doc   = docai_process_bytes_cached($bytes, $mime, $PROJECT_ID, $LOCATION, $PROCESSOR_ID);
                 $data  = docai_extract_triplet($doc);
 
                 $items[] = ['ok' => true] + $data;

@@ -21,7 +21,7 @@ setup:
 	@echo "🚀 Ensuite lancez: make up"
 
 # ====== Cibles ======
-.PHONY: help up down restart ps logs install sh-app lint check-quality format build-assets cache-bust deploy-staging deploy-prod deploy-direct smoke-test smoke-test-staging smoke-test-prod check-deployment test-docker install-hooks setup-gcp-secrets test-cloudbuild
+.PHONY: help up down restart ps logs install sh-app lint check-quality format build-assets cache-bust deploy-staging deploy-prod deploy-direct smoke-test smoke-test-staging smoke-test-prod check-deployment test-docker install-hooks setup-gcp-secrets test-cloudbuild test test-coverage test-coverage-text test-unit test-integration
 
 help:
 	@echo "📋 Commandes disponibles :"
@@ -48,6 +48,11 @@ help:
 	@echo "  make deploy-prod    -> déploiement production via GitHub Actions (manuel)"
 	@echo ""
 	@echo "🧪 Tests :"
+	@echo "  make test          -> lancer tous les tests PHPUnit"
+	@echo "  make test-unit     -> lancer uniquement les tests unitaires"
+	@echo "  make test-integration -> lancer uniquement les tests d'intégration"
+	@echo "  make test-coverage -> générer le rapport de couverture HTML"
+	@echo "  make test-coverage-text -> afficher la couverture dans le terminal"
 	@echo "  make smoke-test    -> tests de smoke locaux"
 	@echo "  make smoke-test-staging -> tests de smoke sur staging"
 	@echo "  make smoke-test-prod -> tests de smoke sur production"
@@ -111,12 +116,12 @@ lint:
 		sleep 3; \
 	fi
 	@if docker compose -f infra/docker-compose.yml -p receipt exec app test -f /var/www/html/vendor/bin/phpcs; then \
-		docker compose -f infra/docker-compose.yml -p receipt exec app /var/www/html/vendor/bin/phpcs --standard=phpcs.xml /var/www/html/ || echo "⚠️  PHPCS échoué"; \
+		docker compose -f infra/docker-compose.yml -p receipt exec app php -d memory_limit=512M /var/www/html/vendor/bin/phpcs --standard=phpcs.xml /var/www/html/ || echo "⚠️  PHPCS échoué"; \
 	else \
 		echo "⚠️  PHPCS non installé (lancez: make install)"; \
 	fi
 	@echo "🔍 Vérification de la syntaxe PHP..."
-	@find backend -name "*.php" -exec php -l {} \; | grep -v "No syntax errors" || echo "✅ Syntaxe PHP OK"
+	@find backend -name "*.php" -not -path "*/vendor/*" -exec php -l {} \; 2>&1 | grep -v "No syntax errors" || echo "✅ Syntaxe PHP OK"
 
 check-quality:
 	@echo "🔍 Vérification de la qualité du code..."
@@ -125,11 +130,68 @@ check-quality:
 format:
 	@echo "🎨 Formatage du code..."
 	@echo "🔧 Formatage JavaScript..."
-	@$(DC) exec app eslint /var/www/html/assets/js/app.js --config /var/www/html/../.eslintrc.js --fix
-	@echo "✅ JavaScript formaté"
-	@echo "🔧 Formatage PHP..."
-	@$(DC) exec app /root/.config/composer/vendor/bin/phpcbf --standard=/var/www/html/../phpcs.xml /var/www/html/
-	@echo "✅ PHP formaté"
+	@if command -v npx > /dev/null 2>&1; then \
+		npx eslint frontend/assets/js/app.js --config .eslintrc.js --fix && echo "✅ JavaScript formaté"; \
+	else \
+		echo "⚠️  ESLint non installé, formatage JavaScript sauté"; \
+		echo "💡 Pour installer: npm install -g eslint"; \
+	fi
+	@./scripts/format-php.sh
+
+# --- Tests PHPUnit ---
+test:
+	@echo "🧪 Running PHPUnit tests..."
+	@if ! docker compose -f infra/docker-compose.yml -p receipt ps app | grep -q "Up"; then \
+		echo "🚀 Démarrage du container pour les tests..."; \
+		$(DC) up -d; \
+		sleep 3; \
+	fi
+	@$(DC) exec app sh -c "cd /var/www/html && php vendor/bin/phpunit -c /phpunit.xml"
+
+test-unit:
+	@echo "🧪 Running unit tests..."
+	@if ! docker compose -f infra/docker-compose.yml -p receipt ps app | grep -q "Up"; then \
+		echo "🚀 Démarrage du container pour les tests..."; \
+		$(DC) up -d; \
+		sleep 3; \
+	fi
+	@$(DC) exec app sh -c "cd /var/www/html && php vendor/bin/phpunit -c /phpunit.xml --testsuite Unit"
+
+test-integration:
+	@echo "🧪 Running integration tests..."
+	@if ! docker compose -f infra/docker-compose.yml -p receipt ps app | grep -q "Up"; then \
+		echo "🚀 Démarrage du container pour les tests..."; \
+		$(DC) up -d; \
+		sleep 3; \
+	fi
+	@$(DC) exec app sh -c "cd /var/www/html && php vendor/bin/phpunit -c /phpunit.xml --testsuite Integration"
+
+test-coverage:
+	@echo "📊 Generating code coverage report..."
+	@if ! docker compose -f infra/docker-compose.yml -p receipt ps app | grep -q "Up"; then \
+		echo "🚀 Démarrage du container pour les tests..."; \
+		$(DC) up -d; \
+		sleep 3; \
+	fi
+	@echo "🔧 Installing PCOV extension if needed..."
+	@$(DC) exec app sh -c "pecl list | grep -q pcov || pecl install pcov || true"
+	@$(DC) exec app sh -c "php -m | grep -q pcov || echo 'extension=pcov.so' > /usr/local/etc/php/conf.d/pcov.ini || true"
+	@echo "🧪 Running tests with coverage..."
+	@$(DC) exec app sh -c "cd /var/www/html && php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit -c /phpunit.xml --coverage-html coverage/html --coverage-clover coverage/clover.xml"
+	@echo "✅ Coverage report generated in backend/coverage/html/index.html"
+	@echo "💡 Ouvrez backend/coverage/html/index.html dans votre navigateur"
+
+test-coverage-text:
+	@echo "📊 Running tests with text coverage..."
+	@if ! docker compose -f infra/docker-compose.yml -p receipt ps app | grep -q "Up"; then \
+		echo "🚀 Démarrage du container pour les tests..."; \
+		$(DC) up -d; \
+		sleep 3; \
+	fi
+	@echo "🔧 Installing PCOV extension if needed..."
+	@$(DC) exec app sh -c "pecl list | grep -q pcov || pecl install pcov || true"
+	@$(DC) exec app sh -c "php -m | grep -q pcov || echo 'extension=pcov.so' > /usr/local/etc/php/conf.d/pcov.ini || true"
+	@$(DC) exec app sh -c "cd /var/www/html && php -d pcov.enabled=1 -d pcov.directory=. vendor/bin/phpunit -c /phpunit.xml --coverage-text"
 
 # --- Déploiement ---
 
@@ -177,6 +239,12 @@ build-assets:
 cache-bust:
 	@echo "🔄 Cache-busting automatique..."
 	@./scripts/cache-bust-safe.sh
+
+# Préparation CDN (cache-busting par hash MD5)
+prepare-cdn:
+	@echo "🌐 Préparation des assets pour CDN..."
+	@chmod +x scripts/prepare-cdn-simple.sh
+	@./scripts/prepare-cdn-simple.sh
 
 deploy-staging:
 	@echo "🚀 Déploiement staging avec cache-busting..."
