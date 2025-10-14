@@ -274,13 +274,50 @@
   // Fonction pour obtenir la version actuelle du SW
   async function getCurrentVersion() {
     try {
-      const reg = await navigator.serviceWorker.getRegistration();
-      if (!reg || !reg.active) return null;
+      console.log('[PWA Update] Récupération de la version...');
 
-      const response = await fetch(reg.active.scriptURL);
+      // Vérifier si le service worker est supporté
+      if (!('serviceWorker' in navigator)) {
+        console.warn('[PWA Update] Service Worker non supporté');
+        return null;
+      }
+
+      const reg = await navigator.serviceWorker.getRegistration();
+      console.log('[PWA Update] Registration:', reg);
+
+      if (!reg) {
+        console.warn('[PWA Update] Aucune registration trouvée');
+        return null;
+      }
+
+      if (!reg.active) {
+        console.warn('[PWA Update] Aucun service worker actif');
+        // Essayer avec installing ou waiting
+        if (reg.installing) {
+          console.log('[PWA Update] SW en cours d\'installation...');
+          return 'installing';
+        }
+        if (reg.waiting) {
+          console.log('[PWA Update] SW en attente...');
+          return 'waiting';
+        }
+        return null;
+      }
+
+      console.log('[PWA Update] SW actif:', reg.active.scriptURL);
+
+      const response = await fetch(reg.active.scriptURL, { cache: 'no-cache' });
       const text = await response.text();
       const match = text.match(/CACHE_VERSION = '(.+?)'/);
-      return match ? match[1] : null;
+
+      if (match) {
+        const version = match[1];
+        console.log('[PWA Update] Version détectée:', version);
+        return version;
+      } else {
+        console.warn('[PWA Update] Version non trouvée dans le script');
+        return 'unknown';
+      }
     } catch (err) {
       console.error('[PWA Update] Erreur lors de la récupération de version:', err);
       return null;
@@ -290,33 +327,90 @@
   // Afficher la version dans l'UI
   async function displayVersion() {
     const badge = document.getElementById('swVersion');
-    if (!badge) return;
-
-    const version = await getCurrentVersion();
-    if (version) {
-      badge.textContent = `⟳ ${version}`;
-      badge.title = `Version du Service Worker: ${version}\nCliquez pour vérifier les mises à jour`;
-      console.log('[PWA Update] Version affichée:', version);
-    } else {
-      badge.textContent = '⟳ v?';
-      badge.title = 'Version inconnue';
+    if (!badge) {
+      console.warn('[PWA Update] Badge swVersion non trouvé dans le DOM');
+      return;
     }
 
-    // Clic sur le badge pour forcer une vérification
-    badge.addEventListener('click', () => {
-      console.log('[PWA Update] Clic sur le badge version, vérification...');
+    console.log('[PWA Update] Affichage de la version...');
+    const version = await getCurrentVersion();
+
+    if (version === 'installing') {
       badge.textContent = '⟳ ...';
-      checkForUpdate();
-      setTimeout(() => displayVersion(), 1000);
+      badge.title = 'Installation en cours...';
+      badge.classList.remove('bg-info', 'bg-success');
+      badge.classList.add('bg-warning');
+      console.log('[PWA Update] Affichage: Installation');
+      // Réessayer dans 2 secondes
+      setTimeout(() => displayVersion(), 2000);
+    } else if (version === 'waiting') {
+      badge.textContent = '⟳ NEW';
+      badge.title = 'Nouvelle version prête ! Cliquez pour actualiser';
+      badge.classList.remove('bg-info', 'bg-warning');
+      badge.classList.add('bg-success');
+      console.log('[PWA Update] Affichage: En attente');
+    } else if (version === 'unknown') {
+      badge.textContent = '⟳ OK';
+      badge.title = 'Service Worker actif (version non détectée)';
+      badge.classList.remove('bg-warning', 'bg-success');
+      badge.classList.add('bg-info');
+      console.log('[PWA Update] Affichage: Inconnu');
+    } else if (version) {
+      badge.textContent = `⟳ ${version}`;
+      badge.title = `Version: ${version}\nCliquez pour vérifier les mises à jour`;
+      badge.classList.remove('bg-warning', 'bg-success');
+      badge.classList.add('bg-info');
+      console.log('[PWA Update] Affichage: Version', version);
+    } else {
+      badge.textContent = '⟳ v?';
+      badge.title = 'Service Worker non actif. Rechargez la page.';
+      badge.classList.remove('bg-info', 'bg-success', 'bg-warning');
+      badge.classList.add('bg-secondary');
+      console.warn('[PWA Update] Affichage: Pas de version');
+    }
+
+  }
+
+  // Handler pour le clic sur le badge (une seule fois)
+  let badgeClickHandlerSet = false;
+  function setupBadgeClickHandler() {
+    if (badgeClickHandlerSet) return;
+
+    const badge = document.getElementById('swVersion');
+    if (!badge) return;
+
+    badge.addEventListener('click', async () => {
+      console.log('[PWA Update] Clic sur le badge version');
+      const currentText = badge.textContent;
+      badge.textContent = '⟳ ...';
+
+      // Si un SW est en attente, le forcer à s'activer
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg && reg.waiting) {
+        console.log('[PWA Update] Activation du SW en attente...');
+        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
+      } else {
+        // Sinon, vérifier les mises à jour
+        checkForUpdate();
+        setTimeout(() => displayVersion(), 2000);
+      }
     });
+
+    badgeClickHandlerSet = true;
+    console.log('[PWA Update] Badge click handler configuré');
   }
 
   // Afficher la version après initialisation
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
+      setupBadgeClickHandler();
       setTimeout(displayVersion, 500);
     });
   } else {
+    setupBadgeClickHandler();
     setTimeout(displayVersion, 500);
   }
 
