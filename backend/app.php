@@ -1343,13 +1343,24 @@ function findLabelRow(
     }
 
     // Label doesn't exist yet, and we can create it
-    // Find next empty row for new label
-    $nextEmptyRow = $startRow + count($values);
+    // Find next empty row for new label (must check for gaps in data)
+    $nextEmptyRow = $startRow + count($values); // Default: after last row
+
+    // Check for empty rows in the middle
+    foreach ($values as $i => $row) {
+        $cellValue = isset($row[0]) ? trim((string)$row[0]) : '';
+        if ($cellValue === '') {
+            // Found an empty row - use it
+            $nextEmptyRow = $startRow + $i;
+            break;
+        }
+    }
 
     logMessage('info', "✨ Label not found, creating new row", [
         'row' => $nextEmptyRow,
         'label' => $label,
-        'normalized' => $normalizedLabel
+        'normalized' => $normalizedLabel,
+        'total_rows_scanned' => count($values)
     ]);
 
     return [
