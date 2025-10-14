@@ -1240,9 +1240,9 @@ function validateAndFormatAmount(float $amount): string
 }
 
 /**
- * US3 & US6: Find existing label row or determine if label can be created
- * Returns the row number if label exists, or null if label doesn't exist
- * Also checks for single label per tab constraint (US6)
+ * US3: Find existing label row or determine next available row
+ * Returns the row number if label exists (for aggregation), or next empty row for new label
+ * Multiple different labels are allowed per sheet - only prevents duplicate labels (US3)
  *
  * @param string $spreadsheetId Spreadsheet ID
  * @param string $sheetName Sheet name
@@ -1250,7 +1250,7 @@ function validateAndFormatAmount(float $amount): string
  * @param int $startRow Starting row number
  * @param string $label Label to find (will be normalized internally)
  * @param string $token Access token
- * @return array ['row' => int|null, 'existing_label' => string|null, 'can_create' => bool, 'error' => string|null]
+ * @return array ['row' => int, 'existing_label' => string|null, 'can_create' => bool, 'error' => string|null]
  */
 function findLabelRow(
     string $spreadsheetId,
@@ -1325,22 +1325,8 @@ function findLabelRow(
         }
     }
 
-    // US6: Check single label per tab constraint
-    if ($foundRow === null && $existingNormalizedLabel !== null && $existingNormalizedLabel !== $normalizedLabel) {
-        // We have a different label in the sheet, and we're trying to add a new one
-        logMessage('warn', "⚠️ Single label constraint violation", [
-            'existing_label' => $existingLabel,
-            'existing_normalized' => $existingNormalizedLabel,
-            'new_label' => $label,
-            'new_normalized' => $normalizedLabel
-        ]);
-        return [
-            'row' => null,
-            'existing_label' => $existingLabel,
-            'can_create' => false,
-            'error' => "Un seul libellé autorisé par onglet. Libellé existant: '{$existingLabel}'"
-        ];
-    }
+    // US6 REMOVED: Multiple different labels are allowed per sheet
+    // Only duplicate labels are prevented (US3)
 
     // If we found the label, return the row
     if ($foundRow !== null) {
@@ -1444,13 +1430,13 @@ function createIncrementalFormula(
 
 /**
  * US1-US9: Write to Google Sheets with label aggregation and incremental formulas
- * This function implements all the user stories for label detection and aggregation:
+ * This function implements the user stories for label detection and aggregation:
  * - US1: Tab selection and column mapping via WHO_COLUMNS
  * - US2: Label normalization
- * - US3: Unique line per label
+ * - US3: Unique line per label (prevents duplicate labels)
  * - US4: Incremental aggregation with formula
  * - US5: Triggered on write
- * - US6: Single label per tab constraint
+ * - US6: REMOVED - Multiple different labels allowed per sheet
  * - US7: Amount validation and formatting
  * - US8: Retry logic for transient errors (with optimistic locking)
  * - US9: Batch write performance (handled at caller level)
@@ -1465,7 +1451,7 @@ function createIncrementalFormula(
  * @param string $token Access token
  * @param int $maxRetries Maximum number of retries (default: 5)
  * @return array Write result with row information
- * @throws RuntimeException If write fails after max retries or constraint violated
+ * @throws RuntimeException If write fails after max retries
  */
 function writeToSheetWithAggregation(
     string $spreadsheetId,
@@ -1498,7 +1484,7 @@ function writeToSheetWithAggregation(
                 'max_retries' => $maxRetries
             ]);
 
-            // US3 & US6: Find existing label row or validate new label can be created
+            // US3: Find existing label row or get next available row
             $labelResult = findLabelRow(
                 $spreadsheetId,
                 $sheetName,
@@ -1508,11 +1494,7 @@ function writeToSheetWithAggregation(
                 $token
             );
 
-            if (!$labelResult['can_create']) {
-                // US6: Single label per tab constraint violated
-                throw new RuntimeException($labelResult['error']);
-            }
-
+            // can_create is always true now (US6 removed)
             $row = $labelResult['row'];
             $isNewLabel = $labelResult['existing_label'] === null;
 
@@ -1714,15 +1696,6 @@ function writeToSheetWithAggregation(
                 ]
             ];
         } catch (Throwable $e) {
-            // Check if this is a constraint violation (US6) - don't retry
-            if (strpos($e->getMessage(), 'Un seul libellé autorisé') !== false) {
-                logMessage('error', "❌ Constraint violation", [
-                    'request_id' => $requestId,
-                    'error' => $e->getMessage()
-                ]);
-                throw $e; // Don't retry constraint violations
-            }
-
             logMessage('error', "❌ Aggregation write attempt failed", [
                 'request_id' => $requestId,
                 'attempt' => $attempt,
