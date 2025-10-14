@@ -1275,6 +1275,16 @@ function findLabelRow(
 
     $values = $qr['json']['values'] ?? [];
 
+    // Debug logging
+    logMessage('info', "🔍 Searching for label in sheet", [
+        'sheet' => $sheetName,
+        'column' => $column,
+        'start_row' => $startRow,
+        'label' => $label,
+        'normalized_label' => $normalizedLabel,
+        'rows_found' => count($values)
+    ]);
+
     // Track if we found any label in the sheet
     $existingLabel = null;
     $existingNormalizedLabel = null;
@@ -1289,6 +1299,14 @@ function findLabelRow(
 
         $normalizedCellValue = normalizeLabel($cellValue);
 
+        // Debug logging for each label found
+        logMessage('info', "📋 Found label in sheet", [
+            'row' => $startRow + $i,
+            'raw_value' => $cellValue,
+            'normalized_value' => $normalizedCellValue,
+            'matches' => ($normalizedCellValue === $normalizedLabel)
+        ]);
+
         // Store first non-empty label found
         if ($existingLabel === null) {
             $existingLabel = $cellValue;
@@ -1298,6 +1316,11 @@ function findLabelRow(
         // Check if this matches our label
         if ($normalizedCellValue === $normalizedLabel) {
             $foundRow = $startRow + $i;
+            logMessage('info', "✅ Label match found!", [
+                'row' => $foundRow,
+                'label' => $cellValue,
+                'normalized' => $normalizedCellValue
+            ]);
             break;
         }
     }
@@ -1305,6 +1328,12 @@ function findLabelRow(
     // US6: Check single label per tab constraint
     if ($foundRow === null && $existingNormalizedLabel !== null && $existingNormalizedLabel !== $normalizedLabel) {
         // We have a different label in the sheet, and we're trying to add a new one
+        logMessage('warn', "⚠️ Single label constraint violation", [
+            'existing_label' => $existingLabel,
+            'existing_normalized' => $existingNormalizedLabel,
+            'new_label' => $label,
+            'new_normalized' => $normalizedLabel
+        ]);
         return [
             'row' => null,
             'existing_label' => $existingLabel,
@@ -1315,6 +1344,10 @@ function findLabelRow(
 
     // If we found the label, return the row
     if ($foundRow !== null) {
+        logMessage('info', "✅ Returning existing label row", [
+            'row' => $foundRow,
+            'label' => $existingLabel
+        ]);
         return [
             'row' => $foundRow,
             'existing_label' => $existingLabel,
@@ -1326,6 +1359,12 @@ function findLabelRow(
     // Label doesn't exist yet, and we can create it
     // Find next empty row for new label
     $nextEmptyRow = $startRow + count($values);
+
+    logMessage('info', "✨ Label not found, creating new row", [
+        'row' => $nextEmptyRow,
+        'label' => $label,
+        'normalized' => $normalizedLabel
+    ]);
 
     return [
         'row' => $nextEmptyRow,
@@ -1546,8 +1585,9 @@ function writeToSheetWithAggregation(
                 throw new RuntimeException('Write failed: ' . ($wr['text'] ?? 'Unknown error'));
             }
 
-            // Small delay to ensure write is committed
-            usleep(100000); // 100ms
+            // Longer delay to ensure write is fully propagated by Google Sheets
+            // This is critical for label aggregation to work properly
+            usleep(500000); // 500ms (increased from 100ms to prevent race conditions)
 
             // Verify the write succeeded by reading back the label column
             $verifyRange = sprintf('%s!%s%d:%s%d', $sheetName, $cols['label'], $row, $cols['label'], $row);
