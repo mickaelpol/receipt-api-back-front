@@ -264,5 +264,102 @@
     checkForUpdate();
   };
 
-  console.log('[PWA Update] ✅ Gestionnaire initialisé - Tapez checkPWAUpdate() pour forcer une vérification');
+  // Fonction pour obtenir la version actuelle du SW
+  async function getCurrentVersion() {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg || !reg.active) return null;
+
+      const response = await fetch(reg.active.scriptURL);
+      const text = await response.text();
+      const match = text.match(/CACHE_VERSION = '(.+?)'/);
+      return match ? match[1] : null;
+    } catch (err) {
+      console.error('[PWA Update] Erreur lors de la récupération de version:', err);
+      return null;
+    }
+  }
+
+  // Afficher la version dans l'UI
+  async function displayVersion() {
+    const badge = document.getElementById('swVersion');
+    if (!badge) return;
+
+    const version = await getCurrentVersion();
+    if (version) {
+      badge.textContent = `⟳ ${version}`;
+      badge.title = `Version du Service Worker: ${version}\nCliquez pour vérifier les mises à jour`;
+      console.log('[PWA Update] Version affichée:', version);
+    } else {
+      badge.textContent = '⟳ v?';
+      badge.title = 'Version inconnue';
+    }
+
+    // Clic sur le badge pour forcer une vérification
+    badge.addEventListener('click', () => {
+      console.log('[PWA Update] Clic sur le badge version, vérification...');
+      badge.textContent = '⟳ ...';
+      checkForUpdate();
+      setTimeout(() => displayVersion(), 1000);
+    });
+  }
+
+  // Afficher la version après initialisation
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(displayVersion, 500);
+    });
+  } else {
+    setTimeout(displayVersion, 500);
+  }
+
+  // Script de diagnostic (accessible via console)
+  window.diagPWA = async function() {
+    console.log('🔍 DIAGNOSTIC PWA\n' + '='.repeat(50));
+
+    // 1. Service Worker
+    const reg = await navigator.serviceWorker.getRegistration();
+    console.log('\n📦 Service Worker:');
+    console.log('  ✓ Enregistré:', !!reg);
+    if (reg) {
+      console.log('  ✓ Actif:', !!reg.active);
+      console.log('  ✓ En attente:', !!reg.waiting);
+      console.log('  ✓ En installation:', !!reg.installing);
+    }
+
+    // 2. Version
+    const version = await getCurrentVersion();
+    console.log('\n📌 Version:');
+    console.log('  ✓ Actuelle:', version || 'Inconnue');
+
+    // 3. Cache
+    const cacheNames = await caches.keys();
+    console.log('\n💾 Caches:', cacheNames.length);
+    cacheNames.forEach(name => console.log('  •', name));
+
+    // 4. Fichiers en cache
+    const staticCache = cacheNames.find(n => n.includes('static'));
+    if (staticCache) {
+      const cache = await caches.open(staticCache);
+      const keys = await cache.keys();
+      const hasPwaUpdate = keys.some(k => k.url.includes('pwa-update'));
+      console.log('\n📄 Fichiers critiques:');
+      console.log('  ✓ pwa-update.js:', hasPwaUpdate ? '✅ En cache' : '❌ Manquant');
+    }
+
+    // 5. État de la mise à jour
+    console.log('\n🔄 État mise à jour:');
+    console.log('  ✓ updateAvailable:', updateAvailable);
+    console.log('  ✓ newServiceWorker:', !!newServiceWorker);
+    console.log('  ✓ registration:', !!registration);
+
+    console.log('\n' + '='.repeat(50));
+    console.log('💡 Commandes utiles:');
+    console.log('  • checkPWAUpdate() - Forcer une vérification');
+    console.log('  • Cliquer sur le badge "⟳ v6" pour vérifier');
+    console.log('='.repeat(50));
+  };
+
+  console.log('[PWA Update] ✅ Gestionnaire initialisé');
+  console.log('[PWA Update] 💡 Commandes: checkPWAUpdate() ou diagPWA()');
 })();
