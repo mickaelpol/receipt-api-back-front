@@ -5,13 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
-
-// Load RateLimiter class if not already loaded
-if (!class_exists('RateLimiter')) {
-    require_once __DIR__ . '/../../RateLimiter.php';
-}
-
-use RateLimiter;
+use App\RateLimiter;
 
 /**
  * Tests for RateLimiter class

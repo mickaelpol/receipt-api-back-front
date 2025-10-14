@@ -188,7 +188,11 @@ if ($path === '/debug/routes' && $APP_ENV === 'local') {
 
     header('Content-Type: text/html; charset=utf-8');
     echo "<!DOCTYPE html><html><head><title>Routes Debug - Receipt API</title>";
-    echo "<style>body{font-family:monospace;margin:20px;} .route{margin:10px 0;padding:10px;background:#f5f5f5;border-left:4px solid #007cba;} .method{color:#007cba;font-weight:bold;} .path{color:#333;} .handler{color:#666;}</style>";
+    echo "<style>";
+    echo "body{font-family:monospace;margin:20px;} ";
+    echo ".route{margin:10px 0;padding:10px;background:#f5f5f5;border-left:4px solid #007cba;} ";
+    echo ".method{color:#007cba;font-weight:bold;} .path{color:#333;} .handler{color:#666;}";
+    echo "</style>";
     echo "</head><body>";
     echo "<h1>Routes Debug - Receipt API</h1>";
     echo "<p><strong>APP_ENV:</strong> $APP_ENV</p>";

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.5/phpunit.xsd"
+         bootstrap="bootstrap.php"
+         colors="true"
+         stopOnFailure="false"
+         cacheDirectory=".phpunit.cache"
+         requireCoverageMetadata="false">
+
+    <!-- Test Suites -->
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+    </testsuites>
+
+    <!-- Code Coverage Configuration -->
+    <source>
+        <include>
+            <directory suffix=".php">.</directory>
+        </include>
+        <exclude>
+            <!-- Exclure vendor et tests -->
+            <directory>vendor</directory>
+            <directory>tests</directory>
+            <!-- Exclure bootstrap (pas de logique métier) -->
+            <file>bootstrap.php</file>
+            <!-- Exclure index.php (point d'entrée, testé via integration) -->
+            <file>index.php</file>
+        </exclude>
+    </source>
+
+    <!-- Coverage Reporting -->
+    <coverage>
+        <report>
+            <html outputDirectory="coverage/html"/>
+            <text outputFile="php://stdout" showOnlySummary="false"/>
+            <clover outputFile="coverage/clover.xml"/>
+            <cobertura outputFile="coverage/cobertura.xml"/>
+        </report>
+    </coverage>
+
+    <!-- Logging -->
+    <logging>
+        <junit outputFile="coverage/junit.xml"/>
+    </logging>
+
+    <!-- PHP Settings -->
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="DEBUG" value="0"/>
+
+        <!-- Mock environment variables for tests -->
+        <env name="GCP_PROJECT_ID" value="test-project"/>
+        <env name="GCP_PROCESSOR_ID" value="test-processor"/>
+        <env name="GCP_LOCATION" value="eu"/>
+        <env name="GOOGLE_OAUTH_CLIENT_ID" value="test-client-id.apps.googleusercontent.com"/>
+        <env name="SPREADSHEET_ID" value="test-spreadsheet-id"/>
+        <env name="ALLOWED_EMAILS" value="test@example.com"/>
+        <env name="DEFAULT_SHEET" value="TestSheet"/>
+        <env name="WHO_COLUMNS" value='{"Test":["A","B","C"]}'/>
+    </php>
+</phpunit>
