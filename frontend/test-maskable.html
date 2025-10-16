@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Icônes Maskables - Scan2Sheet</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            padding: 20px;
+            background: #0b0f14;
+            color: #f5f6f7;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #4388ff;
+            text-align: center;
+        }
+        .info {
+            background: #121822;
+            border: 1px solid #182234;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .test-card {
+            background: #121822;
+            border: 1px solid #182234;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+        .icon-container {
+            width: 200px;
+            height: 200px;
+            margin: 20px auto;
+            position: relative;
+            background: #0b0f14;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .icon-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .mask-circle {
+            clip-path: circle(50%);
+        }
+        .mask-rounded {
+            clip-path: inset(10% round 20%);
+        }
+        .mask-squircle {
+            clip-path: url(#squircle);
+        }
+        .safe-zone-overlay {
+            position: absolute;
+            top: 10%;
+            left: 10%;
+            right: 10%;
+            bottom: 10%;
+            border: 2px dashed #4388ff;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: #4388ff;
+            color: white;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        .status {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #9db2d0;
+        }
+        code {
+            background: #182234;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #4388ff;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 Test des Icônes Maskables</h1>
+
+    <div class="info">
+        <h2>📱 À propos des icônes maskables</h2>
+        <p>Les icônes maskables permettent à Android d'adapter votre icône à différentes formes (cercle, carré arrondi, etc.) tout en gardant le contenu important visible.</p>
+        <p><strong>Safe Zone :</strong> La zone bleue en pointillés représente la "safe zone" (80% du centre). Le contenu critique de votre icône doit rester dans cette zone pour être visible sur tous les appareils Android.</p>
+    </div>
+
+    <h2 style="text-align: center; margin-top: 40px;">Aperçu des masques Android</h2>
+
+    <div class="test-grid">
+        <!-- Icône originale -->
+        <div class="test-card">
+            <h3>Original (Any)</h3>
+            <div class="icon-container">
+                <img src="assets/icons/icon-512x512.png" alt="Icône originale">
+            </div>
+            <span class="badge">Sans masque</span>
+            <div class="status">Utilisé dans le manifest avec <code>purpose: "any"</code></div>
+        </div>
+
+        <!-- Masque cercle -->
+        <div class="test-card">
+            <h3>Masque Cercle</h3>
+            <div class="icon-container mask-circle">
+                <img src="assets/icons/icon-512x512.png" alt="Masque cercle">
+                <div class="safe-zone-overlay"></div>
+            </div>
+            <span class="badge">Circle</span>
+            <div class="status">Pixel, certains appareils Samsung</div>
+        </div>
+
+        <!-- Masque arrondi -->
+        <div class="test-card">
+            <h3>Masque Arrondi</h3>
+            <div class="icon-container mask-rounded">
+                <img src="assets/icons/icon-512x512.png" alt="Masque arrondi">
+                <div class="safe-zone-overlay"></div>
+            </div>
+            <span class="badge">Rounded Square</span>
+            <div class="status">La plupart des Android récents</div>
+        </div>
+
+        <!-- Avec safe zone visible -->
+        <div class="test-card">
+            <h3>Safe Zone (80%)</h3>
+            <div class="icon-container">
+                <img src="assets/icons/icon-512x512.png" alt="Safe zone">
+                <div class="safe-zone-overlay"></div>
+            </div>
+            <span class="badge">Zone sécurisée</span>
+            <div class="status">Le contenu doit rester dans la zone bleue</div>
+        </div>
+    </div>
+
+    <div class="info" style="margin-top: 40px;">
+        <h2>✅ Validation</h2>
+        <p><strong>Votre icône est-elle adaptée ?</strong></p>
+        <ol>
+            <li>Le logo/texte important reste-t-il visible dans la zone bleue en pointillés ?</li>
+            <li>L'icône a-t-elle un fond opaque (pas de transparence sur les bords) ?</li>
+            <li>L'icône est-elle encore reconnaissable avec le masque cercle ?</li>
+        </ol>
+        <p>✨ Si vous répondez <strong>OUI</strong> aux 3 questions, votre icône est parfaitement adaptée pour Android maskable !</p>
+    </div>
+
+    <div class="info" style="margin-top: 20px;">
+        <h2>🧪 Test en ligne</h2>
+        <p>Pour un test complet, visitez : <a href="https://maskable.app/editor" target="_blank" style="color: #4388ff;">https://maskable.app/editor</a></p>
+        <p>Uploadez votre icône <code>icon-512x512.png</code> pour voir le rendu sur tous les appareils Android.</p>
+    </div>
+
+    <svg width="0" height="0">
+        <defs>
+            <clipPath id="squircle" clipPathUnits="objectBoundingBox">
+                <path d="M 0,0.5 C 0,0 0,0 0.5,0 S 1,0 1,0.5 1,1 0.5,1 0,1 0,0.5" />
+            </clipPath>
+        </defs>
+    </svg>
+</body>
+</html>
