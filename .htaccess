@@ -29,6 +29,10 @@ RewriteRule ^manifest\.json$ frontend/manifest.json [L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^service-worker\.js$ frontend/service-worker.js [L]
 
+# Servir le favicon.ico du frontend
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^favicon\.ico$ frontend/assets/icons/favicon.ico [L]
+
 # Frontend SPA - servir frontend/index.html pour la racine
 RewriteRule ^$ frontend/index.html [L]
 
