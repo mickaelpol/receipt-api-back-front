@@ -7,7 +7,7 @@
  * - Images: Cache with size limit
  */
 
-const CACHE_VERSION = 'v1.0.1'; // First stable release with label aggregation
+const CACHE_VERSION = 'v1.0.2'; // New icons, splash screens, and maskable support
 const STATIC_CACHE = `scan2sheet-static-${CACHE_VERSION}`;
 const API_CACHE = `scan2sheet-api-${CACHE_VERSION}`;
 const IMAGE_CACHE = `scan2sheet-images-${CACHE_VERSION}`;
@@ -16,11 +16,28 @@ const IMAGE_CACHE = `scan2sheet-images-${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/',
   '/index.html',
+  '/manifest.json', // IMPORTANT: Cache manifest for PWA updates
   '/assets/css/app.css',
   '/assets/js/app.js',
   '/assets/js/pwa-update.js',
+  // SVG Icons (fallback)
   '/assets/icons/icon-192.svg',
   '/assets/icons/icon-512.svg',
+  '/assets/icons/favicon.svg',
+  // PNG Icons (primary - maskable support)
+  '/assets/icons/icon-192x192.png',
+  '/assets/icons/icon-512x512.png',
+  '/assets/icons/icon-1024x1024.png',
+  // iOS Splash Screens
+  '/assets/splash/splash-1125x2436.png',
+  '/assets/splash/splash-1170x2532.png',
+  '/assets/splash/splash-1179x2556.png',
+  '/assets/splash/splash-1242x2688.png',
+  '/assets/splash/splash-1284x2778.png',
+  '/assets/splash/splash-1290x2796.png',
+  '/assets/splash/splash-1536x2048.png',
+  '/assets/splash/splash-1668x2388.png',
+  '/assets/splash/splash-2048x2732.png',
   // Bootstrap CSS (CDN fallback)
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css',
   // Bootstrap Icons (CDN fallback)
@@ -346,8 +363,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body || 'New notification from Scan2Sheet',
-    icon: '/assets/icons/icon-192.png',
-    badge: '/assets/icons/icon-192.png',
+    icon: '/assets/icons/icon-192x192.png',
+    badge: '/assets/icons/icon-192x192.png',
     vibrate: [200, 100, 200]
   };
 
