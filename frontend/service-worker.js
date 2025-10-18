@@ -7,7 +7,7 @@
  * - Images: Cache with size limit
  */
 
-const CACHE_VERSION = 'v1.0.3'; // New icons, splash screens, and maskable support
+const CACHE_VERSION = 'v1.0.4'; // Update: New PWA icons and splash screens
 const STATIC_CACHE = `scan2sheet-static-${CACHE_VERSION}`;
 const API_CACHE = `scan2sheet-api-${CACHE_VERSION}`;
 const IMAGE_CACHE = `scan2sheet-images-${CACHE_VERSION}`;
@@ -22,10 +22,6 @@ const STATIC_ASSETS = [
   '/assets/js/pwa-update.js',
   // Favicon
   '/assets/icons/favicon.ico',
-  // SVG Icons (fallback)
-  '/assets/icons/icon-192.svg',
-  '/assets/icons/icon-512.svg',
-  '/assets/icons/favicon.svg',
   // PNG Icons (primary - maskable support)
   '/assets/icons/icon-192x192.png',
   '/assets/icons/icon-512x512.png',
