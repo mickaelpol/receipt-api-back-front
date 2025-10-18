@@ -1,9 +1,9 @@
 {
-    "id": "scan2sheet-pwa-v2",
+    "id": "scan2sheet-pwa-v3-icons",
     "name": "Scan2Sheet - Receipt Parser",
     "short_name": "Scan2Sheet",
     "description": "Scan receipts and save to Google Sheets",
-    "start_url": "/?source=pwa",
+    "start_url": "/?source=pwa&v=3",
     "display": "standalone",
     "background_color": "#0b0f14",
     "theme_color": "#4388ff",
@@ -44,18 +44,6 @@
             "sizes": "1024x1024",
             "type": "image/png",
             "purpose": "maskable"
-        },
-        {
-            "src": "/assets/icons/icon-192.svg",
-            "sizes": "192x192",
-            "type": "image/svg+xml",
-            "purpose": "any"
-        },
-        {
-            "src": "/assets/icons/icon-512.svg",
-            "sizes": "512x512",
-            "type": "image/svg+xml",
-            "purpose": "any"
         }
     ]
 }
